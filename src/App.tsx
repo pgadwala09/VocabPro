@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, BookOpen, Zap, Users, Star, Brain, Image, Lightbulb, Target, ChevronDown, ChevronUp, Menu, X, Mic, FileText, BarChart3, Bot, SpellCheck as Spell, Share2, Upload, MessageSquare, HelpCircle, CreditCard, MoreHorizontal, Edit3, TrendingUp, UserCheck, Volume2, Monitor, Smartphone, Tablet, ArrowDown, Activity, Video, BarChart, Sparkles, Twitter, Instagram, Youtube, Linkedin, Github } from 'lucide-react';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
+import Dashboard from './components/Dashboard';
+import { useAuth } from './hooks/useAuth';
 
 function App() {
   const [playingVideo, setPlayingVideo] = useState(false);
@@ -9,6 +11,7 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
+  const { user, loading } = useAuth();
 
   const mainFeatures = [
     {
@@ -98,12 +101,63 @@ function App() {
     setOpenFAQ(openFAQ === index ? null : index);
   };
 
-  if (showLogin) {
-    return <LoginPage onBack={() => setShowLogin(false)} />;
+  const handleLoginSuccess = () => {
+    setShowLogin(false);
+  };
+
+  const handleSignupSuccess = () => {
+    setShowSignup(false);
+  };
+
+  const handleLogout = () => {
+    // Reset any local state if needed
+  };
+
+  // Show loading screen while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <Brain className="w-8 h-8 text-white" />
+          </div>
+          <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"></div>
+        </div>
+      </div>
+    );
   }
 
+  // Show dashboard if user is authenticated
+  if (user) {
+    return <Dashboard onLogout={handleLogout} />;
+  }
+
+  // Show login page
+  if (showLogin) {
+    return (
+      <LoginPage 
+        onBack={() => setShowLogin(false)} 
+        onSignupClick={() => {
+          setShowLogin(false);
+          setShowSignup(true);
+        }}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  // Show signup page
   if (showSignup) {
-    return <SignupPage onBack={() => setShowSignup(false)} />;
+    return (
+      <SignupPage 
+        onBack={() => setShowSignup(false)}
+        onLoginClick={() => {
+          setShowSignup(false);
+          setShowLogin(true);
+        }}
+        onSignupSuccess={handleSignupSuccess}
+      />
+    );
   }
 
   return (
@@ -238,7 +292,10 @@ function App() {
             
             {/* Single Call to Action */}
             <div className="flex justify-center items-center pt-8">
-              <button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-12 py-5 rounded-lg font-bold text-xl transition-all duration-300 transform hover:scale-105 shadow-lg">
+              <button 
+                onClick={() => setShowSignup(true)}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-12 py-5 rounded-lg font-bold text-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
+              >
                 Start Speaking today!!!
               </button>
             </div>
@@ -344,7 +401,10 @@ function App() {
 
               {/* Action Button */}
               <div className="pt-4">
-                <button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg">
+                <button 
+                  onClick={() => setShowSignup(true)}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                >
                   Join the Debate Arena
                 </button>
               </div>
