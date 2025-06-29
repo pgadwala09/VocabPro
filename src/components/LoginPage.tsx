@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, ArrowLeft, Brain, AlertCircle, CheckCircle } from 'lucide-react';
-import { auth } from '../lib/supabase';
+import { signIn, resetPassword } from '../lib/supabase';
 
 interface LoginPageProps {
   onBack: () => void;
@@ -23,7 +23,7 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
     setSuccess(null);
 
     try {
-      const { data, error } = await auth.signIn(email, password);
+      const { data, error } = await signIn(email, password);
       
       if (error) {
         setError(error.message);
@@ -51,7 +51,7 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
     setError(null);
 
     try {
-      const { error } = await auth.resetPassword(email);
+      const { error } = await resetPassword(email);
       
       if (error) {
         setError(error.message);

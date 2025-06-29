@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, ArrowLeft, Brain, AlertCircle, CheckCircle } from 'lucide-react';
-import { auth } from '../lib/supabase';
+import { signUp } from '../lib/supabase';
 
 interface SignupPageProps {
   onBack: () => void;
@@ -31,7 +31,7 @@ function SignupPage({ onBack, onLoginClick, onSignupSuccess }: SignupPageProps) 
     }
 
     try {
-      const { data, error } = await auth.signUp(email, password, name);
+      const { data, error } = await signUp(email, password, name);
       
       if (error) {
         setError(error.message);
