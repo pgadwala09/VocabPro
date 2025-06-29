@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, LogOut, User, Settings, BookOpen, Mic, BarChart3, Trophy } from 'lucide-react';
+import { Brain, LogOut, User, Settings, BookOpen, Mic, BarChart3, Trophy, Sparkles } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 interface DashboardProps {
@@ -20,12 +20,33 @@ function Dashboard({ onLogout }: DashboardProps) {
       <header className="bg-white/10 backdrop-blur-lg border-b border-white/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Logo */}
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
-                <Brain className="w-6 h-6 text-white" />
+            {/* Enhanced Logo */}
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                {/* Main logo container with gradient background */}
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 via-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-300">
+                  <Brain className="w-7 h-7 text-white" />
+                  {/* Sparkle accent */}
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-br from-yellow-400 to-orange-400 rounded-full flex items-center justify-center">
+                    <Sparkles className="w-2.5 h-2.5 text-white" />
+                  </div>
+                </div>
+                {/* Subtle glow effect */}
+                <div className="absolute inset-0 w-12 h-12 bg-gradient-to-br from-purple-500/30 to-blue-500/30 rounded-2xl blur-lg -z-10"></div>
               </div>
-              <span className="text-2xl font-bold text-white">Vocab Pro</span>
+              
+              {/* Brand text with enhanced styling */}
+              <div className="flex flex-col">
+                <span className="text-2xl font-bold text-white tracking-tight">
+                  Vocab
+                  <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                    Pro
+                  </span>
+                </span>
+                <span className="text-xs text-gray-300 font-medium tracking-wide">
+                  Learn • Practice • Excel
+                </span>
+              </div>
             </div>
 
             {/* User Menu */}
