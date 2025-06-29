@@ -51,7 +51,7 @@ function Dashboard({ onLogout }: DashboardProps) {
         {/* Welcome Section */}
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Welcome back, {user?.user_metadata?.full_name?.split(' ')[0] || 'User'}!
+            Welcome Back, {user?.user_metadata?.full_name?.split(' ')[0] || 'User'}!
           </h1>
           <p className="text-xl text-gray-300">
             Ready to continue your learning journey?
