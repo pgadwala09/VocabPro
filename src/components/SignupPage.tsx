@@ -1,27 +1,52 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, ArrowLeft, Brain } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Brain, AlertCircle, CheckCircle } from 'lucide-react';
+import { auth } from '../lib/supabase';
 
 interface SignupPageProps {
   onBack: () => void;
+  onLoginClick?: () => void;
+  onSignupSuccess?: () => void;
 }
 
-function SignupPage({ onBack }: SignupPageProps) {
+function SignupPage({ onBack, onLoginClick, onSignupSuccess }: SignupPageProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate signup process
-    setTimeout(() => {
+    setError(null);
+    setSuccess(null);
+
+    // Basic validation
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
       setIsLoading(false);
-      // Handle signup logic here
-      console.log('Signup attempt:', { name, email, password });
-    }, 2000);
+      return;
+    }
+
+    try {
+      const { data, error } = await auth.signUp(email, password, name);
+      
+      if (error) {
+        setError(error.message);
+      } else if (data.user) {
+        setSuccess('Account created successfully! Welcome to Vocab Pro.');
+        // Call success callback after a short delay
+        setTimeout(() => {
+          onSignupSuccess?.();
+        }, 1500);
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -69,6 +94,22 @@ function SignupPage({ onBack }: SignupPageProps) {
 
           {/* Signup Form */}
           <div className="bg-white/10 backdrop-blur-lg rounded-3xl border border-white/20 p-10 shadow-2xl">
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-500/20 backdrop-blur-sm border border-red-500/30 rounded-xl flex items-center space-x-3">
+                <AlertCircle className="w-5 h-5 text-red-300 flex-shrink-0" />
+                <p className="text-red-200 text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {success && (
+              <div className="mb-6 p-4 bg-green-500/20 backdrop-blur-sm border border-green-500/30 rounded-xl flex items-center space-x-3">
+                <CheckCircle className="w-5 h-5 text-green-300 flex-shrink-0" />
+                <p className="text-green-200 text-sm">{success}</p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-8">
               {/* Name Field */}
               <div className="space-y-4">
@@ -83,6 +124,7 @@ function SignupPage({ onBack }: SignupPageProps) {
                   className="w-full px-6 py-5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all duration-300 text-lg"
                   placeholder="Enter your full name"
                   required
+                  disabled={isLoading}
                 />
               </div>
 
@@ -99,6 +141,7 @@ function SignupPage({ onBack }: SignupPageProps) {
                   className="w-full px-6 py-5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all duration-300 text-lg"
                   placeholder="Enter your email address"
                   required
+                  disabled={isLoading}
                 />
               </div>
 
@@ -117,11 +160,13 @@ function SignupPage({ onBack }: SignupPageProps) {
                     placeholder="Create a strong password"
                     required
                     minLength={6}
+                    disabled={isLoading}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-300 hover:text-white transition-colors duration-300"
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-300 hover:text-white transition-colors duration-300 disabled:opacity-50"
+                    disabled={isLoading}
                   >
                     {showPassword ? (
                       <EyeOff className="w-6 h-6" />
@@ -130,6 +175,9 @@ function SignupPage({ onBack }: SignupPageProps) {
                     )}
                   </button>
                 </div>
+                <p className="text-sm text-gray-400">
+                  Password must be at least 6 characters long
+                </p>
               </div>
 
               {/* Signup Button */}
@@ -156,7 +204,11 @@ function SignupPage({ onBack }: SignupPageProps) {
               <div className="text-center">
                 <p className="text-gray-300">
                   Already have an account?{' '}
-                  <button className="text-purple-300 hover:text-purple-200 transition-colors duration-300 font-semibold">
+                  <button 
+                    onClick={onLoginClick}
+                    disabled={isLoading}
+                    className="text-purple-300 hover:text-purple-200 transition-colors duration-300 font-semibold disabled:opacity-50"
+                  >
                     Login
                   </button>
                 </p>
