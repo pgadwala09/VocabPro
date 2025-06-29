@@ -47,13 +47,13 @@ function App() {
   return (
     <div className="min-h-screen bg-white font-['Open_Sans',sans-serif]">
       {/* Header */}
-      <header className="relative bg-white shadow-sm overflow-hidden">
+      <header className="relative bg-white shadow-sm overflow-visible">
         {/* Subtle background pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-purple-600 to-blue-600"></div>
         </div>
         
-        <nav className="relative z-10 bg-white">
+        <nav className="relative z-50 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-20 bg-white">
               {/* Enhanced Logo */}
@@ -87,58 +87,65 @@ function App() {
 
               {/* Desktop Navigation */}
               <div className="hidden md:flex items-center space-x-12">
-                <div className="relative">
-                  <button
-                    onMouseEnter={() => setIsFeaturesOpen(true)}
-                    onMouseLeave={() => setIsFeaturesOpen(false)}
-                    className="flex items-center space-x-1 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300"
-                  >
+                <div 
+                  className="relative"
+                  onMouseEnter={() => setIsFeaturesOpen(true)}
+                  onMouseLeave={() => setIsFeaturesOpen(false)}
+                >
+                  <button className="flex items-center space-x-1 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300">
                     <span>Features</span>
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isFeaturesOpen ? 'rotate-180' : ''}`} />
                   </button>
                   
                   {/* Features Dropdown */}
-                  {isFeaturesOpen && (
-                    <div 
-                      className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50"
-                      onMouseEnter={() => setIsFeaturesOpen(true)}
-                      onMouseLeave={() => setIsFeaturesOpen(false)}
-                    >
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 mb-2">
-                        Learning Features
-                      </div>
-                      
-                      <a href="#vocabulary" className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors duration-200">
-                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
-                          <BookOpen className="w-4 h-4 text-white" />
+                  <div className={`absolute top-full left-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100 py-4 transition-all duration-300 transform ${
+                    isFeaturesOpen 
+                      ? 'opacity-100 visible translate-y-0' 
+                      : 'opacity-0 invisible -translate-y-2'
+                  }`}
+                  style={{ zIndex: 9999 }}
+                  >
+                    <div className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 mb-3">
+                      Learning Features
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <a href="#vocabulary" className="flex items-center space-x-4 px-6 py-4 text-gray-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 hover:text-purple-600 transition-all duration-200 group">
+                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                          <BookOpen className="w-5 h-5 text-white" />
                         </div>
-                        <div>
-                          <div className="font-medium">Vocabulary</div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900 group-hover:text-purple-600">Vocabulary</div>
                           <div className="text-sm text-gray-500">Build your word power</div>
                         </div>
                       </a>
                       
-                      <a href="#jam-sessions" className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
-                          <Mic className="w-4 h-4 text-white" />
+                      <a href="#jam-sessions" className="flex items-center space-x-4 px-6 py-4 text-gray-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 hover:text-blue-600 transition-all duration-200 group">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                          <Mic className="w-5 h-5 text-white" />
                         </div>
-                        <div>
-                          <div className="font-medium">JAM Sessions</div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900 group-hover:text-blue-600">JAM Sessions</div>
                           <div className="text-sm text-gray-500">Practice speaking fluently</div>
                         </div>
                       </a>
                       
-                      <a href="#debate" className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors duration-200">
-                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center">
-                          <MessageSquare className="w-4 h-4 text-white" />
+                      <a href="#debate" className="flex items-center space-x-4 px-6 py-4 text-gray-700 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 hover:text-indigo-600 transition-all duration-200 group">
+                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                          <MessageSquare className="w-5 h-5 text-white" />
                         </div>
-                        <div>
-                          <div className="font-medium">Debate</div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900 group-hover:text-indigo-600">Debate</div>
                           <div className="text-sm text-gray-500">Sharpen your arguments</div>
                         </div>
                       </a>
                     </div>
-                  )}
+                    
+                    {/* Bottom accent */}
+                    <div className="mt-4 px-6">
+                      <div className="h-1 bg-gradient-to-r from-purple-500 via-blue-500 to-indigo-500 rounded-full"></div>
+                    </div>
+                  </div>
                 </div>
                 
                 <a href="#about" className="text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300">About</a>
@@ -180,34 +187,49 @@ function App() {
 
           {/* Mobile Navigation */}
           {isMenuOpen && (
-            <div className="md:hidden bg-white border-t border-gray-100">
+            <div className="md:hidden bg-white border-t border-gray-100 shadow-lg">
               <div className="px-4 py-6 space-y-4">
                 <div className="space-y-2">
-                  <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Features</div>
-                  <a href="#vocabulary" className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-colors duration-200">
-                    <BookOpen className="w-5 h-5" />
-                    <span>Vocabulary</span>
+                  <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Features</div>
+                  <a href="#vocabulary" className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-xl transition-colors duration-200">
+                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+                      <BookOpen className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Vocabulary</div>
+                      <div className="text-sm text-gray-500">Build your word power</div>
+                    </div>
                   </a>
-                  <a href="#jam-sessions" className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors duration-200">
-                    <Mic className="w-5 h-5" />
-                    <span>JAM Sessions</span>
+                  <a href="#jam-sessions" className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-colors duration-200">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
+                      <Mic className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-medium">JAM Sessions</div>
+                      <div className="text-sm text-gray-500">Practice speaking fluently</div>
+                    </div>
                   </a>
-                  <a href="#debate" className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors duration-200">
-                    <MessageSquare className="w-5 h-5" />
-                    <span>Debate</span>
+                  <a href="#debate" className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors duration-200">
+                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center">
+                      <MessageSquare className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Debate</div>
+                      <div className="text-sm text-gray-500">Sharpen your arguments</div>
+                    </div>
                   </a>
                 </div>
                 
                 <div className="border-t border-gray-100 pt-4 space-y-2">
-                  <a href="#about" className="block px-3 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300">About</a>
-                  <a href="#pricing" className="block px-3 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300">Pricing</a>
-                  <a href="#contact" className="block px-3 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300">Contact</a>
+                  <a href="#about" className="block px-4 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300 rounded-lg hover:bg-gray-50">About</a>
+                  <a href="#pricing" className="block px-4 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300 rounded-lg hover:bg-gray-50">Pricing</a>
+                  <a href="#contact" className="block px-4 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300 rounded-lg hover:bg-gray-50">Contact</a>
                 </div>
                 
                 <div className="border-t border-gray-100 pt-4 space-y-3">
                   <button 
                     onClick={() => setCurrentPage('login')}
-                    className="w-full text-left px-3 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300"
+                    className="w-full text-left px-4 py-2 text-gray-700 hover:text-purple-600 font-medium transition-colors duration-300 rounded-lg hover:bg-gray-50"
                   >
                     Login
                   </button>
