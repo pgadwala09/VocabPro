@@ -1,6 +1,7 @@
 import React from 'react';
 import { Brain, LogOut, User, Settings, BookOpen, Mic, BarChart3, Trophy, Sparkles } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
   onLogout: () => void;
@@ -8,6 +9,7 @@ interface DashboardProps {
 
 function Dashboard({ onLogout }: DashboardProps) {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
     await signOut();
@@ -88,7 +90,10 @@ function Dashboard({ onLogout }: DashboardProps) {
             </div>
             <h3 className="text-xl font-bold text-white mb-2">Vocabulary</h3>
             <p className="text-gray-300 mb-4">Practice and expand your vocabulary</p>
-            <button className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-2 rounded-lg font-semibold transition-all duration-300">
+            <button
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+              onClick={() => navigate('/vocabpractice')}
+            >
               Start Practice
             </button>
           </div>

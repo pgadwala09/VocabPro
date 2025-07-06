@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, ArrowLeft, Brain, AlertCircle, CheckCircle } from 'lucide-react';
 import { signIn, resetPassword } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 interface LoginPageProps {
   onBack: () => void;
@@ -15,6 +16,7 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,10 +31,10 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
         setError(error.message);
       } else if (data.user) {
         setSuccess('Login successful! Welcome back.');
-        // Call success callback after a short delay
         setTimeout(() => {
+          navigate('/dashboard');
           onLoginSuccess?.();
-        }, 1500);
+        }, 1000);
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.');
