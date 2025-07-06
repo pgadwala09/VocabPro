@@ -13,6 +13,9 @@ export function useAuth() {
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
+    }).catch(() => {
+      // If there's an error (like invalid credentials), just set loading to false
+      setLoading(false)
     })
 
     // Listen for auth changes
