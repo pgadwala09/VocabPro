@@ -1,15 +1,28 @@
-import React from 'react';
-import { Brain, LogOut, User, Settings, BookOpen, Mic, BarChart3, Trophy, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Brain, LogOut, User, Settings, BookOpen, Mic, BarChart3, Trophy, Sparkles, File, FileText, Music, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { LibraryItem } from '../App';
 
 interface DashboardProps {
   onLogout: () => void;
+  libraryItems: LibraryItem[];
 }
 
-function Dashboard({ onLogout }: DashboardProps) {
+function Dashboard({ onLogout, libraryItems }: DashboardProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+
+  const groupByType = (items: LibraryItem[]) => {
+    return {
+      Documents: items.filter((i) => i.type === 'file' || i.type === 'text'),
+      'Audio Files': items.filter((i) => i.type === 'audio'),
+      Screenshots: items.filter((i) => i.type === 'screenshot'),
+      Links: items.filter((i) => i.type === 'link'),
+    };
+  };
+
+  const grouped = groupByType(libraryItems);
 
   const handleLogout = async () => {
     await signOut();
@@ -136,14 +149,31 @@ function Dashboard({ onLogout }: DashboardProps) {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 p-8">
-          <h2 className="text-2xl font-bold text-white mb-6">Recent Activity</h2>
-          <div className="text-center py-12">
-            <p className="text-gray-300 text-lg">
-              Start practicing to see your recent activity here!
-            </p>
+        <section className="w-full max-w-4xl bg-white/90 rounded-2xl shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-purple-900 mb-6">Recent Activity</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {Object.entries(grouped).map(([type, items]) => (
+              <div key={type}>
+                <h3 className="text-lg font-semibold text-blue-700 mb-3">{type}</h3>
+                <div className="flex flex-col gap-3">
+                  {items.length > 0 ? (
+                    items.map((item: LibraryItem) => (
+                      <div key={item.name} className="flex items-center bg-white rounded-lg shadow p-3 gap-3 hover:shadow-md transition">
+                        <div>{item.icon}</div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-gray-800 text-sm truncate max-w-[120px]">{item.name}</span>
+                          <span className="text-xs text-gray-500 capitalize">{item.type}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-gray-400 text-sm">No {type.toLowerCase()} yet.</div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        </section>
       </main>
     </div>
   );

@@ -1,239 +1,413 @@
-import React, { useRef, useState } from 'react';
-import { Download, Share2, Mic, Volume2, SpellCheck, RotateCcw, Trash2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Upload, Link as LinkIcon, Image as ImageIcon, FileText, Mic, File, Music, Brain, Sparkles } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { Dialog } from '@headlessui/react';
+import { LibraryItem } from '../App';
 
-const TABS = [
-  { label: 'Record & Upload', key: 'record', icon: <Mic className="w-5 h-5 mr-2" /> },
-  { label: 'Pronunciation', key: 'pronunciation', icon: <Volume2 className="w-5 h-5 mr-2" /> },
-  { label: 'Spellings', key: 'spellings', icon: <SpellCheck className="w-5 h-5 mr-2" /> },
+interface VocabPracticeProps {
+  libraryItems: LibraryItem[];
+  setLibraryItems: React.Dispatch<React.SetStateAction<LibraryItem[]>>;
+}
+
+const optionTiles = [
+  { label: 'Upload File', icon: <Upload className="w-6 h-6 mb-1 text-purple-700" /> },
+  { label: 'Paste a Link', icon: <LinkIcon className="w-6 h-6 mb-1 text-blue-700" /> },
+  { label: 'Paste Screenshot', icon: <ImageIcon className="w-6 h-6 mb-1 text-green-700" /> },
+  { label: 'Paste Text', icon: <FileText className="w-6 h-6 mb-1 text-indigo-700" /> },
+  { label: 'Record Audio', icon: <Mic className="w-6 h-6 mb-1 text-pink-700" /> },
 ];
 
-const VocabPractice: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('record');
+const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryItems }) => {
+  const [page, setPage] = useState(0);
+  const itemsPerPage = 6;
+  const pageCount = Math.ceil(libraryItems.length / itemsPerPage);
+  const pagedItems = libraryItems.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
-  // Record & Upload Audio
-  const [recording, setRecording] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const { user } = useAuth();
+  const avatarUrl = user?.user_metadata?.avatar_url;
+  const fullName = user?.user_metadata?.full_name || user?.email || '';
+  const initials = fullName
+    ? fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'U';
+
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
+  const [isScreenshotDialogOpen, setIsScreenshotDialogOpen] = useState(false);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [isTextDialogOpen, setIsTextDialogOpen] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioURL, setAudioURL] = useState<string | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
 
-  // Pronunciation Practice
-  const [pronounceWord, setPronounceWord] = useState('');
-  const [pronRecording, setPronRecording] = useState(false);
-  const [pronAudioUrl, setPronAudioUrl] = useState<string | null>(null);
-  const pronMediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const pronAudioChunks = useRef<Blob[]>([]);
+  const handleNext = () => {
+    if (page < pageCount - 1) setPage(page + 1);
+  };
+  const handleClear = () => {
+    setLibraryItems([]);
+    setPage(0);
+  };
 
-  // For share confirmation
-  const [shareMsg, setShareMsg] = useState('');
-
-  // Handle file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      alert(`Uploaded file: ${e.target.files[0].name}`);
+  // Add link to library
+  const handleAddLink = () => {
+    if (linkInput.trim()) {
+      setLibraryItems([
+        ...libraryItems,
+        {
+          name: linkInput,
+          type: 'link',
+          icon: <LinkIcon className="w-6 h-6 text-blue-600" />,
+        },
+      ]);
+      setLinkInput('');
+      setIsLinkDialogOpen(false);
     }
   };
 
-  // Handle recording (General)
-  const startRecording = async () => {
-    setRecording(true);
+  // Add screenshot to library
+  const handleAddScreenshot = () => {
+    if (screenshotFile) {
+      setLibraryItems([
+        ...libraryItems,
+        {
+          name: screenshotFile.name,
+          type: 'screenshot',
+          icon: <ImageIcon className="w-6 h-6 text-green-600" />,
+        },
+      ]);
+      setScreenshotFile(null);
+      setIsScreenshotDialogOpen(false);
+    }
+  };
+
+  // Add text to library
+  const handleAddText = () => {
+    if (textInput.trim()) {
+      setLibraryItems([
+        ...libraryItems,
+        {
+          name: textInput.slice(0, 20) + (textInput.length > 20 ? '...' : ''),
+          type: 'text',
+          icon: <FileText className="w-6 h-6 text-indigo-700" />,
+        },
+      ]);
+      setTextInput('');
+      setIsTextDialogOpen(false);
+    }
+  };
+
+  // Audio recording handlers
+  const handleStartRecording = async () => {
+    setAudioURL(null);
+    setAudioBlob(null);
     audioChunks.current = [];
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mediaRecorder = new MediaRecorder(stream);
-    mediaRecorderRef.current = mediaRecorder;
-    mediaRecorder.ondataavailable = (event) => {
-      audioChunks.current.push(event.data);
-    };
-    mediaRecorder.onstop = () => {
-      const audioBlob = new Blob(audioChunks.current, { type: 'audio/wav' });
-      setAudioUrl(URL.createObjectURL(audioBlob));
-    };
-    mediaRecorder.start();
-  };
-  const stopRecording = () => {
-    setRecording(false);
-    mediaRecorderRef.current?.stop();
-  };
-
-  // Pronunciation: Play correct pronunciation
-  const playPronunciation = () => {
-    if (!pronounceWord) return;
-    const utter = new window.SpeechSynthesisUtterance(pronounceWord);
-    utter.lang = 'en-US';
-    window.speechSynthesis.speak(utter);
-  };
-
-  // Pronunciation: Record user's pronunciation
-  const startPronRecording = async () => {
-    setPronRecording(true);
-    pronAudioChunks.current = [];
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mediaRecorder = new MediaRecorder(stream);
-    pronMediaRecorderRef.current = mediaRecorder;
-    mediaRecorder.ondataavailable = (event) => {
-      pronAudioChunks.current.push(event.data);
-    };
-    mediaRecorder.onstop = () => {
-      const audioBlob = new Blob(pronAudioChunks.current, { type: 'audio/wav' });
-      setPronAudioUrl(URL.createObjectURL(audioBlob));
-    };
-    mediaRecorder.start();
-  };
-  const stopPronRecording = () => {
-    setPronRecording(false);
-    pronMediaRecorderRef.current?.stop();
-  };
-
-  // Save audio file
-  const handleSave = () => {
-    if (audioUrl) {
-      const a = document.createElement('a');
-      a.href = audioUrl;
-      a.download = 'recording.wav';
-      a.click();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new window.MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) {
+          audioChunks.current.push(e.data);
+        }
+      };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        setAudioURL(URL.createObjectURL(blob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      alert('Microphone access denied or not available.');
     }
   };
 
-  // Share audio URL
-  const handleShare = async () => {
-    if (audioUrl) {
-      try {
-        await navigator.clipboard.writeText(audioUrl);
-        setShareMsg('Audio link copied to clipboard!');
-        setTimeout(() => setShareMsg(''), 2000);
-      } catch {
-        setShareMsg('Failed to copy link.');
-        setTimeout(() => setShareMsg(''), 2000);
-      }
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleAddAudio = () => {
+    if (audioBlob && audioURL) {
+      setLibraryItems([
+        ...libraryItems,
+        {
+          name: `Recording-${new Date().toLocaleTimeString()}.webm`,
+          type: 'audio',
+          icon: <Music className="w-6 h-6 text-blue-600" />,
+        },
+      ]);
+      setAudioBlob(null);
+      setAudioURL(null);
+      setIsRecordDialogOpen(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
-      <div className="w-full max-w-3xl">
-        <h2 className="text-4xl font-extrabold mb-2 text-center text-purple-100 tracking-tight">Vocabulary Practice</h2>
-        <p className="text-center text-lg text-blue-100 mb-8">Practice your speaking, pronunciation, and spelling skills in one place.</p>
-        {/* Tabs */}
-        <div className="flex justify-center mb-8">
-          <div className="flex bg-white/90 rounded-xl shadow-lg overflow-hidden">
-            {TABS.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center px-6 py-3 font-semibold focus:outline-none transition-all duration-200 text-base
-                  ${activeTab === tab.key
-                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
-                    : 'bg-transparent text-purple-700 hover:bg-purple-100'}
-                `}
-                style={{ borderRight: tab.key !== 'spellings' ? '1px solid #e5e7eb' : undefined }}
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex flex-col">
+      {/* Top Bar */}
+      <header className="flex items-center justify-between px-8 py-6 bg-white/10 shadow-md">
+        {/* Logo (same as Dashboard) */}
+        <div className="flex items-center flex-1">
+          <div className="relative">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 via-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-300">
+              <Brain className="w-7 h-7 text-white" />
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-br from-yellow-400 to-orange-400 rounded-full flex items-center justify-center">
+                <Sparkles className="w-2.5 h-2.5 text-white" />
+              </div>
+            </div>
+            <div className="absolute inset-0 w-12 h-12 bg-gradient-to-br from-purple-500/30 to-blue-500/30 rounded-2xl blur-lg -z-10"></div>
+          </div>
+          <div className="flex flex-col ml-4">
+            <span className="text-2xl font-bold text-white tracking-tight">
+              Vocab
+              <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Pro</span>
+            </span>
+            <span className="text-xs text-gray-300 font-medium tracking-wide">Learn • Practice • Excel</span>
+          </div>
+        </div>
+        {/* Center Title */}
+        <div className="flex-1 flex justify-center">
+          <h1 className="text-2xl md:text-3xl font-bold text-purple-900 bg-white/70 px-6 py-2 rounded-xl shadow-sm">
+            Vocabulary Practice
+          </h1>
+        </div>
+        {/* Profile Picture (same as Dashboard) */}
+        <div className="flex items-center flex-1 justify-end">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Profile"
+              className="w-12 h-12 rounded-full border-2 border-blue-400 shadow-md object-cover"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full border-2 border-blue-400 shadow-md bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-white text-xl font-bold">
+              {initials}
+            </div>
+          )}
+        </div>
+      </header>
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col items-center justify-start pt-12 px-4 w-full">
+        {/* Step 1: Choose an Option */}
+        <div className="w-full max-w-3xl mb-12">
+          <div className="flex items-center mb-4">
+            <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold mr-3">1</div>
+            <span className="text-xl font-semibold text-white">Choose an Option</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            {optionTiles.map(tile => (
+              <div
+                key={tile.label}
+                className="flex flex-col items-center bg-white/90 rounded-lg shadow p-3 hover:shadow-lg cursor-pointer transition min-w-[90px]"
+                onClick={() => {
+                  if (tile.label === 'Paste a Link') setIsLinkDialogOpen(true);
+                  else if (tile.label === 'Paste Screenshot') setIsScreenshotDialogOpen(true);
+                  else if (tile.label === 'Paste Text') setIsTextDialogOpen(true);
+                  else if (tile.label === 'Record Audio') setIsRecordDialogOpen(true);
+                }}
               >
-                {tab.icon}
-                {tab.label}
-              </button>
+                {tile.icon}
+                <span className="text-xs font-semibold text-gray-800 text-center whitespace-nowrap">{tile.label}</span>
+              </div>
             ))}
           </div>
         </div>
-        {/* Tab Content */}
-        <div className="w-full bg-white rounded-2xl shadow-xl p-8 min-h-[350px]">
-          {activeTab === 'record' && (
-            <div className="flex flex-col items-center w-full">
-              <h3 className="text-xl font-bold mb-6 text-purple-700">Record & Upload Audio</h3>
-              {/* Step 1: Upload */}
-              <div className="flex items-start w-full mb-6">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold mr-4">1</div>
-                <div className="flex-1">
-                  <label className="block mb-2 font-medium">Upload Audio/Video</label>
-                  <input type="file" accept="audio/*,video/*" onChange={handleFileUpload} className="w-full" />
-                </div>
-              </div>
-              {/* Step 2: Record */}
-              <div className="flex items-start w-full mb-6">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold mr-4">2</div>
-                <div className="flex-1">
-                  <label className="block mb-2 font-medium">Or Record Audio</label>
-                  {!recording ? (
-                    <button onClick={startRecording} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">Start Recording</button>
-                  ) : (
-                    <button onClick={stopRecording} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">Stop Recording</button>
-                  )}
-                </div>
-              </div>
-              {/* Step 3: Playback */}
-              <div className="flex items-start w-full">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center font-bold mr-4">3</div>
-                <div className="flex-1">
-                  <label className="block mb-2 font-medium">Playback</label>
-                  {audioUrl ? (
-                    <>
-                      <audio controls src={audioUrl} className="w-full mb-2" />
-                      <div className="flex gap-4 mt-2">
-                        <button onClick={handleSave} title="Download" className="p-2 rounded hover:bg-blue-100 transition" aria-label="Download">
-                          <Download className="w-6 h-6 text-green-600" />
-                        </button>
-                        <button onClick={handleShare} title="Share" className="p-2 rounded hover:bg-blue-100 transition" aria-label="Share">
-                          <Share2 className="w-6 h-6 text-purple-600" />
-                        </button>
-                      </div>
-                      {shareMsg && <div className="text-xs text-blue-600 mt-2">{shareMsg}</div>}
-                    </>
-                  ) : (
-                    <span className="text-gray-400">No recording yet.</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          {activeTab === 'pronunciation' && (
-            <div className="flex flex-col items-center">
-              <h3 className="text-xl font-bold mb-4 text-blue-700">Pronunciation</h3>
+        {/* Link Dialog */}
+        <Dialog open={isLinkDialogOpen} onClose={() => setIsLinkDialogOpen(false)}>
+          <div className="fixed inset-0 z-40 flex items-center justify-center">
+            <div className="fixed inset-0 bg-black opacity-30" onClick={() => setIsLinkDialogOpen(false)} />
+            <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-8 z-50">
+              <h2 className="text-xl font-bold mb-4 text-blue-700">Paste a Link</h2>
               <input
                 type="text"
-                value={pronounceWord}
-                onChange={e => setPronounceWord(e.target.value)}
-                placeholder="Enter a word to practice"
-                className="w-full mb-4 px-4 py-2 border border-blue-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full border border-blue-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                placeholder="Paste your link here..."
+                value={linkInput}
+                onChange={e => setLinkInput(e.target.value)}
               />
-              <div className="flex gap-2 mb-4">
+              <div className="flex justify-end gap-2">
                 <button
-                  onClick={playPronunciation}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-                  disabled={!pronounceWord}
+                  className="px-4 py-2 bg-gray-200 rounded-lg font-semibold hover:bg-gray-300"
+                  onClick={() => setIsLinkDialogOpen(false)}
                 >
-                  Hear Pronunciation
+                  Cancel
                 </button>
-                {!pronRecording ? (
+                <button
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  onClick={handleAddLink}
+                  disabled={!linkInput.trim()}
+                >
+                  Add Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+        {/* Screenshot Dialog */}
+        <Dialog open={isScreenshotDialogOpen} onClose={() => setIsScreenshotDialogOpen(false)}>
+          <div className="fixed inset-0 z-40 flex items-center justify-center">
+            <div className="fixed inset-0 bg-black opacity-30" onClick={() => setIsScreenshotDialogOpen(false)} />
+            <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-8 z-50">
+              <h2 className="text-xl font-bold mb-4 text-green-700">Paste Screenshot</h2>
+              <input
+                type="file"
+                accept="image/*"
+                className="w-full border border-green-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-green-400"
+                onChange={e => setScreenshotFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  className="px-4 py-2 bg-gray-200 rounded-lg font-semibold hover:bg-gray-300"
+                  onClick={() => { setIsScreenshotDialogOpen(false); setScreenshotFile(null); }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50"
+                  onClick={handleAddScreenshot}
+                  disabled={!screenshotFile}
+                >
+                  Add Screenshot
+                </button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+        {/* Text Dialog */}
+        <Dialog open={isTextDialogOpen} onClose={() => setIsTextDialogOpen(false)}>
+          <div className="fixed inset-0 z-40 flex items-center justify-center">
+            <div className="fixed inset-0 bg-black opacity-30" onClick={() => setIsTextDialogOpen(false)} />
+            <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-8 z-50">
+              <h2 className="text-xl font-bold mb-4 text-indigo-700">Paste Text</h2>
+              <textarea
+                className="w-full border border-indigo-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Paste or type your text here..."
+                value={textInput}
+                onChange={e => setTextInput(e.target.value)}
+                rows={4}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  className="px-4 py-2 bg-gray-200 rounded-lg font-semibold hover:bg-gray-300"
+                  onClick={() => { setIsTextDialogOpen(false); setTextInput(''); }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                  onClick={handleAddText}
+                  disabled={!textInput.trim()}
+                >
+                  Add Text
+                </button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+        {/* Record Audio Dialog */}
+        <Dialog open={isRecordDialogOpen} onClose={() => { setIsRecordDialogOpen(false); setAudioURL(null); setAudioBlob(null); setIsRecording(false); }}>
+          <div className="fixed inset-0 z-40 flex items-center justify-center">
+            <div className="fixed inset-0 bg-black opacity-30" onClick={() => setIsRecordDialogOpen(false)} />
+            <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-8 z-50 flex flex-col items-center">
+              <h2 className="text-xl font-bold mb-4 text-blue-700">Record Audio</h2>
+              <div className="flex flex-col items-center w-full mb-4">
+                {!isRecording && !audioURL && (
                   <button
-                    onClick={startPronRecording}
-                    className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition"
-                    disabled={!pronounceWord}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition mb-2"
+                    onClick={handleStartRecording}
                   >
-                    Record Yourself
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopPronRecording}
-                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
-                  >
-                    Stop Recording
+                    Start Recording
                   </button>
                 )}
+                {isRecording && (
+                  <button
+                    className="px-6 py-2 bg-red-600 text-white rounded-lg font-semibold shadow hover:bg-red-700 transition mb-2"
+                    onClick={handleStopRecording}
+                  >
+                    Stop
+                  </button>
+                )}
+                {audioURL && !isRecording && (
+                  <audio controls src={audioURL} className="w-full mt-2" />
+                )}
               </div>
-              {pronAudioUrl && (
-                <div className="mt-4 w-full">
-                  <audio controls src={pronAudioUrl} className="w-full" />
-                  <div className="text-xs text-gray-500 mt-1">Your pronunciation recording</div>
-                </div>
-              )}
+              <div className="flex justify-end gap-2 w-full">
+                <button
+                  className="px-4 py-2 bg-gray-200 rounded-lg font-semibold hover:bg-gray-300"
+                  onClick={() => { setIsRecordDialogOpen(false); setAudioURL(null); setAudioBlob(null); setIsRecording(false); }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  onClick={handleAddAudio}
+                  disabled={!audioBlob || isRecording}
+                >
+                  Add Audio
+                </button>
+              </div>
             </div>
-          )}
-          {activeTab === 'spellings' && (
-            <div className="flex flex-col items-center">
-              <h3 className="text-xl font-bold mb-4 text-green-700">Spellings</h3>
-              <p className="text-gray-600 text-center mb-4">Test and improve your spelling skills. (Coming soon!)</p>
-              <button className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition" disabled>Practice Spellings</button>
-            </div>
-          )}
+          </div>
+        </Dialog>
+        {/* Step 2: Upload Your Source */}
+        <div className="w-full max-w-3xl mb-12">
+          <div className="flex items-center mb-4">
+            <div className="w-8 h-8 rounded-full bg-blue-400 text-white flex items-center justify-center font-bold mr-3">2</div>
+            <span className="text-xl font-semibold text-white">Upload Your Source</span>
+          </div>
+          <div className="flex flex-col items-center justify-center bg-white/80 rounded-2xl border-2 border-dashed border-blue-400 h-48 shadow-inner cursor-pointer transition hover:bg-blue-50">
+            <span className="text-xl font-bold text-blue-700 mb-1">Browse Files</span>
+            <span className="text-sm text-blue-400">or drag files in</span>
+          </div>
         </div>
-      </div>
+        {/* Library Section */}
+        <div className="w-full max-w-3xl mb-12">
+          <div className="flex items-center mb-4">
+            <span className="text-xl font-bold text-white mr-3">Library</span>
+            <span className="text-base text-blue-200">- Documents you have saved</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            {pagedItems.map(item => (
+              <div key={item.name} className="flex items-center bg-white/90 rounded-lg shadow p-4 gap-3 hover:shadow-lg transition">
+                <div>{item.icon}</div>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-gray-800 text-sm truncate max-w-[120px]">{item.name}</span>
+                  <span className="text-xs text-gray-500 capitalize">{item.type}</span>
+                </div>
+              </div>
+            ))}
+            {pagedItems.length === 0 && (
+              <div className="col-span-3 text-center text-gray-400 py-8">No documents in your library.</div>
+            )}
+          </div>
+        </div>
+        {/* Next and Clear buttons at far right of the page */}
+        <div className="w-full flex justify-end pr-8 mb-12">
+          <div className="flex gap-3">
+            <button
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition disabled:opacity-50"
+              onClick={handleNext}
+              disabled={page >= pageCount - 1 || libraryItems.length === 0}
+            >
+              Next
+            </button>
+            <button
+              className="px-6 py-3 bg-red-500 text-white rounded-lg font-semibold shadow hover:bg-red-600 transition disabled:opacity-50"
+              onClick={handleClear}
+              disabled={libraryItems.length === 0}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 };
