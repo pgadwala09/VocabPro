@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, BookOpen, Zap, Users, Star, Brain, Image, Lightbulb, Target, ChevronDown, ChevronUp, Menu, X, Mic, FileText, BarChart3, Bot, SpellCheck as Spell, Share2, Upload, MessageSquare, HelpCircle, CreditCard, MoreHorizontal, Edit3, TrendingUp, UserCheck, Volume2, Monitor, Smartphone, Tablet, ArrowDown, Activity, Video, BarChart, Sparkles, Twitter, Instagram, Youtube, Linkedin, Github } from 'lucide-react';
+import { Play, BookOpen, Zap, Users, Star, Brain, Image, Lightbulb, Target, ChevronDown, ChevronUp, Menu, X, Mic, FileText, BarChart3, Bot, SpellCheck as Spell, Share2, Upload, MessageSquare, HelpCircle, CreditCard, MoreHorizontal, Edit3, TrendingUp, UserCheck, Volume2, Monitor, Smartphone, Tablet, ArrowDown, Activity, Video, BarChart, Sparkles, Twitter, Instagram, Youtube, Linkedin, Github, File, Music, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
 import Dashboard from './components/Dashboard';
@@ -8,6 +8,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import VocabPractice from './components/vocabpractice';
 import LandingPage from './components/LandingPage';
 
+export interface LibraryItem {
+  name: string;
+  type: 'file' | 'text' | 'audio' | 'screenshot' | 'link';
+  icon: React.ReactNode;
+}
+
 function App() {
   const [playingVideo, setPlayingVideo] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
@@ -15,6 +21,23 @@ function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
   const { user, loading } = useAuth();
+
+  const initialLibraryItems: LibraryItem[] = [
+    // Documents
+    { name: 'EnglishNotes.pdf', type: 'file', icon: <File className="w-6 h-6 text-purple-600" /> },
+    { name: 'VocabularyList.docx', type: 'file', icon: <File className="w-6 h-6 text-purple-600" /> },
+    { name: 'EssayDraft.txt', type: 'file', icon: <FileText className="w-6 h-6 text-indigo-600" /> },
+    // Audio Files
+    { name: 'LectureAudio.wav', type: 'audio', icon: <Music className="w-6 h-6 text-blue-600" /> },
+    { name: 'PronunciationPractice.mp3', type: 'audio', icon: <Music className="w-6 h-6 text-blue-600" /> },
+    { name: 'StoryRecording.m4a', type: 'audio', icon: <Music className="w-6 h-6 text-blue-600" /> },
+    // Screenshots
+    { name: 'Screenshot1.png', type: 'screenshot', icon: <ImageIcon className="w-6 h-6 text-green-600" /> },
+    { name: 'VocabAppScreen.jpg', type: 'screenshot', icon: <ImageIcon className="w-6 h-6 text-green-600" /> },
+    { name: 'HomeworkSnap.png', type: 'screenshot', icon: <ImageIcon className="w-6 h-6 text-green-600" /> },
+  ];
+
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(initialLibraryItems);
 
   const mainFeatures = [
     {
@@ -126,8 +149,8 @@ function App() {
       <Routes>
         <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
         <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
-        <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/vocabpractice" element={user ? <VocabPractice /> : <Navigate to="/login" />} />
+        <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
+        <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
         <Route path="/*" element={<LandingPage />} />
       </Routes>
     </BrowserRouter>
