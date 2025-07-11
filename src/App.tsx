@@ -7,6 +7,12 @@ import { useAuth } from './hooks/useAuth';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import VocabPractice from './components/vocabpractice';
 import LandingPage from './components/LandingPage';
+import PronunciationPractice from './components/PronunciationPractice';
+import { RecordingProvider } from './hooks/RecordingContext';
+import Flashcards from './components/Flashcards';
+import { VocabularyProvider } from './hooks/VocabularyContext';
+import { FeedbackProvider } from './hooks/FeedbackContext';
+import Insights from './components/Insights';
 
 export interface LibraryItem {
   name: string;
@@ -145,15 +151,24 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
-        <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
-        <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
-        <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
-        <Route path="/*" element={<LandingPage />} />
-      </Routes>
-    </BrowserRouter>
+    <FeedbackProvider>
+      <VocabularyProvider>
+        <RecordingProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
+              <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
+              <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
+              <Route path="/flashcards" element={<Flashcards />} />
+              <Route path="/insights" element={<Insights />} />
+              <Route path="/*" element={<LandingPage />} />
+            </Routes>
+          </BrowserRouter>
+        </RecordingProvider>
+      </VocabularyProvider>
+    </FeedbackProvider>
   );
 }
 
