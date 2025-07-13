@@ -13,6 +13,9 @@ import Flashcards from './components/Flashcards';
 import { VocabularyProvider } from './hooks/VocabularyContext';
 import { FeedbackProvider } from './hooks/FeedbackContext';
 import Insights from './components/Insights';
+import TongueTwisterChallenge from './components/TongueTwisterChallenge';
+import MysterySoundBox from './components/MysterySoundBox';
+import SoundSafari from './components/SoundSafari';
 
 export interface LibraryItem {
   name: string;
@@ -163,6 +166,9 @@ function App() {
               <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
               <Route path="/flashcards" element={<Flashcards />} />
               <Route path="/insights" element={<Insights />} />
+              <Route path="/tongue-twister" element={<TongueTwisterChallenge />} />
+              <Route path="/mystery-sound-box" element={<MysterySoundBox />} />
+              <Route path="/sound-safari" element={<SoundSafari />} />
               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>

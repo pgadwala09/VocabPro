@@ -3,6 +3,8 @@ import { Lightbulb, Mic, StopCircle, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useVocabulary } from '../hooks/VocabularyContext';
 import { useFeedback } from '../hooks/FeedbackContext';
+import Insights, { InsightsSingleCard } from './Insights';
+import TongueTwisterChallenge from './TongueTwisterChallenge';
 
 // Placeholder components for tabs
 const TongueTwister = () => (
@@ -11,18 +13,40 @@ const TongueTwister = () => (
     <p className="text-white text-center text-base mb-4 font-medium">Practice tricky tongue twisters to improve your pronunciation!</p>
   </div>
 );
-const SoundSafari = () => (
-  <div className="flex flex-col items-center justify-center h-full">
-    <h2 className="text-2xl font-bold text-white mb-4 mt-10 text-center">Sound Safari</h2>
-    <p className="text-white text-center text-base mb-4 font-medium">Explore and mimic fun sounds to train your ear and voice.</p>
-  </div>
-);
+const SoundSafari = () => {
+  const navigate = useNavigate();
+  return (
+    <div className="relative flex flex-col items-center justify-center h-full w-full min-h-[400px] p-6 rounded-2xl border-4 border-green-400 bg-gradient-to-br from-green-200 via-yellow-100 to-green-100 shadow-xl overflow-hidden">
+      {/* Jungle vines top border */}
+      <div className="absolute top-0 left-0 w-full flex justify-between px-4 z-10">
+        <span className="text-3xl md:text-4xl animate-bounce">🌿</span>
+        <span className="text-3xl md:text-4xl animate-bounce delay-200">🍃</span>
+        <span className="text-3xl md:text-4xl animate-bounce delay-400">🌴</span>
+        <span className="text-3xl md:text-4xl animate-bounce delay-700">🪴</span>
+      </div>
+      {/* Animal and sound icons */}
+      <span className="absolute left-4 top-20 text-5xl animate-wiggle-slow">🦜</span>
+      <span className="absolute right-6 top-32 text-5xl animate-wiggle">🐒</span>
+      <span className="absolute left-10 bottom-10 text-4xl animate-bounce">🥁</span>
+      <span className="absolute right-10 bottom-8 text-4xl animate-spin-slow">🎶</span>
+      <h2 className="text-3xl font-extrabold text-green-900 mb-4 mt-14 text-center drop-shadow-lg font-sans">Sound Safari</h2>
+      <p className="text-lg text-green-800 text-center font-semibold mb-4 font-sans bg-white/60 rounded-xl px-4 py-2 shadow">Explore and mimic fun sounds to train your ear and voice.</p>
+      <button
+        onClick={() => navigate('/mystery-sound-box')}
+        className="mt-8 bg-yellow-300 hover:bg-yellow-400 text-yellow-900 font-extrabold py-4 px-10 rounded-full text-2xl shadow-xl transition-all border-4 border-yellow-500 animate-bounce animate-glow"
+        style={{ minWidth: 260, boxShadow: '0 0 24px 4px #facc15, 0 2px 8px #0002' }}
+      >
+        🏆 Try Mystery Sound Box!
+      </button>
+    </div>
+  );
+};
 
 const PronunciationPractice: React.FC = () => {
   const navigate = useNavigate();
   const { vocabList, setVocabList } = useVocabulary();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [activeTab, setActiveTab] = useState<'twister' | 'safari' | 'none'>('none');
+  const [activeTab, setActiveTab] = useState<'twister' | 'none'>('none');
   const { addFeedback } = useFeedback();
   // Select word state: default to latest word
   const [selectedWord, setSelectedWord] = useState(() => vocabList.length > 0 ? vocabList[vocabList.length - 1].word : '');
@@ -139,7 +163,7 @@ const PronunciationPractice: React.FC = () => {
       {/* Main Row: Echo Match (large), Learn Insights (right) */}
       <div className="flex flex-row gap-8 w-full max-w-6xl mb-8">
         {/* Left: Large Echo Match Box and Tabs inside at the top */}
-        <div className="flex-1 flex flex-col items-center">
+        <div className="flex-[1.2] flex flex-col items-end pr-4">
           {/* Echo Match Box (even larger) */}
           <div className="flex flex-col items-center justify-start w-[650px] h-[540px] bg-gradient-to-br from-purple-800 via-blue-800 to-blue-700 border-2 border-white rounded-2xl p-0 relative mb-6" style={{boxShadow: '0 4px 40px 0 rgba(0,0,0,0.15)'}}>
             {/* Tab Bar at the very top inside the box */}
@@ -151,14 +175,14 @@ const PronunciationPractice: React.FC = () => {
                 Flashcards
               </button>
               <button
-                onClick={() => setActiveTab('twister')}
+                onClick={() => navigate('/tongue-twister')}
                 className={`px-6 py-2 rounded-lg font-bold text-lg transition-all duration-200 ${activeTab === 'twister' ? 'bg-white text-purple-900 shadow' : 'bg-white/30 text-white hover:bg-white/60 hover:text-purple-900'}`}
               >
                 Tongue Twister
               </button>
               <button
-                onClick={() => setActiveTab('safari')}
-                className={`px-6 py-2 rounded-lg font-bold text-lg transition-all duration-200 ${activeTab === 'safari' ? 'bg-white text-purple-900 shadow' : 'bg-white/30 text-white hover:bg-white/60 hover:text-purple-900'}`}
+                onClick={() => navigate('/sound-safari')}
+                className="px-6 py-2 rounded-lg font-bold text-lg transition-all duration-200 bg-gradient-to-r from-green-400 to-yellow-300 text-green-900 shadow hover:from-green-500 hover:to-yellow-400"
               >
                 Sound Safari
               </button>
@@ -225,17 +249,21 @@ const PronunciationPractice: React.FC = () => {
           </div>
           {/* Tab Content below the Echo Match box */}
           <div className="flex-1 flex flex-col items-center justify-center w-full h-full">
-            {activeTab === 'twister' && <TongueTwister />}
-            {activeTab === 'safari' && <SoundSafari />}
+            {/* Remove SoundSafari and its button from PronunciationPractice. Only keep the tab bar for Flashcards and Tongue Twister. */}
           </div>
         </div>
         {/* Right: Learn Insights */}
-        <div className="flex flex-col items-center justify-start min-w-[300px] ml-4 mt-2">
-          <div className="bg-white/90 rounded-2xl shadow-lg p-8 flex flex-col items-center w-[300px] h-[540px] border-2 border-blue-200">
-            <Lightbulb className="w-12 h-12 text-yellow-400 mb-4" />
-            <h3 className="text-2xl font-bold text-blue-900 mb-3 text-center">Learn Insights</h3>
-            <p className="text-gray-700 text-center mb-6">Get tips and feedback on your pronunciation and speaking skills.</p>
-            {/* Removed 'View Insights' button as requested */}
+        <div className="flex-1 flex flex-col items-start pl-4">
+          <div className="bg-gradient-to-br from-purple-800 via-blue-800 to-blue-700 rounded-2xl shadow-lg p-8 flex flex-col items-center w-[300px] h-[540px] border-2 border-blue-200 mt-2">
+            <Lightbulb className="w-12 h-12 text-yellow-300 mb-4" />
+            <h3 className="text-2xl font-bold text-white mb-3 text-center">Learn Insights</h3>
+            <p className="text-white text-center mb-6">Get tips and feedback on your pronunciation and speaking skills.</p>
+            <button
+              className="mt-auto px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition"
+              onClick={() => navigate('/insights')}
+            >
+              View Insights
+            </button>
           </div>
         </div>
       </div>
@@ -260,95 +288,6 @@ const PronunciationPractice: React.FC = () => {
             <div className="col-span-3 text-center text-gray-400 py-8">No recent activity.</div>
           )}
         </div>
-      </div>
-      {/* Insights Section */}
-      <div className="w-full max-w-4xl mt-8 bg-white/10 rounded-2xl p-8 shadow-lg">
-        <div className="flex items-center mb-4">
-          <span className="text-xl font-bold text-white mr-3">Insights</span>
-          <span className="text-base text-blue-200">- Your latest pronunciation feedback</span>
-        </div>
-        {lastFeedback && (
-          <div className="flex flex-col items-center w-full mt-2">
-            <div className="bg-gradient-to-br from-blue-900 to-purple-800 rounded-2xl shadow-xl p-8 w-full max-w-md mx-auto mb-8 text-white relative">
-              {/* Correction message */}
-              <div className="text-2xl font-bold mb-4 text-center">
-                {lastFeedback.score >= 85 ? (
-                  <span className="text-green-300">Correct!</span>
-                ) : (
-                  <span className="text-red-300">Try again</span>
-                )}
-              </div>
-              <h2 className="text-2xl font-bold mb-4 text-center">Pronunciation Insights</h2>
-              <div className="flex flex-col items-center mb-6">
-                <div className="w-28 h-28 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-5xl font-bold border-8 border-blue-200 mb-2">
-                  {lastFeedback.score}
-                </div>
-                <div className="text-lg font-semibold text-blue-100">/100</div>
-                <div className="text-lg font-bold mt-2">{lastFeedback.word}</div>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">🎤</span>
-                  <div className="flex-1">
-                    <div className="font-semibold">Clarity</div>
-                    <div className="text-blue-200 text-sm">How clear was my pronunciation?</div>
-                  </div>
-                  <div className="flex-1 flex flex-col items-end">
-                    <div className="w-32 h-2 bg-blue-200/30 rounded-full overflow-hidden mb-1">
-                      <div className="h-2 bg-blue-400 rounded-full" style={{ width: `${lastFeedback.clarity.value * 10}%` }}></div>
-                    </div>
-                    <div className="text-xs text-blue-100">{lastFeedback.clarity.text}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">🎵</span>
-                  <div className="flex-1">
-                    <div className="font-semibold">Word Stress</div>
-                    <div className="text-blue-200 text-sm">Did I stress the syllables correctly?</div>
-                  </div>
-                  <div className="flex-1 flex flex-col items-end">
-                    <div className="w-32 h-2 bg-blue-200/30 rounded-full overflow-hidden mb-1">
-                      <div className="h-2 bg-blue-400 rounded-full" style={{ width: `${lastFeedback.wordStress.value * 10}%` }}></div>
-                    </div>
-                    <div className="text-xs text-blue-100">{lastFeedback.wordStress.text}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">⏱️</span>
-                  <div className="flex-1">
-                    <div className="font-semibold">Pace</div>
-                    <div className="text-blue-200 text-sm">Was I speaking at an appropriate speed?</div>
-                  </div>
-                  <div className="flex-1 flex flex-col items-end">
-                    <div className="w-32 h-2 bg-blue-200/30 rounded-full overflow-hidden mb-1">
-                      <div className="h-2 bg-blue-400 rounded-full" style={{ width: `${lastFeedback.pace.value * 10}%` }}></div>
-                    </div>
-                    <div className="text-xs text-blue-100">{lastFeedback.pace.text}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">🎶</span>
-                  <div className="flex-1">
-                    <div className="font-semibold">Phoneme Accuracy</div>
-                    <div className="text-blue-200 text-sm">How precise were my sounds?</div>
-                  </div>
-                  <div className="flex-1 flex flex-col items-end">
-                    <div className="w-32 h-2 bg-blue-200/30 rounded-full overflow-hidden mb-1">
-                      <div className="h-2 bg-blue-400 rounded-full" style={{ width: `${lastFeedback.phonemeAccuracy.value * 10}%` }}></div>
-                    </div>
-                    <div className="text-xs text-blue-100">{lastFeedback.phonemeAccuracy.text}</div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <div className="font-semibold mb-2">Suggestions</div>
-                  <ul className="list-disc list-inside text-blue-100 text-sm space-y-1">
-                    {lastFeedback.suggestions.map((s: string, i: number) => <li key={i}>{s}</li>)}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
