@@ -91,4 +91,13 @@ const Insights = () => {
   );
 };
 
+export const InsightsSingleCard = () => {
+  const { feedbacks } = useFeedback();
+  if (!feedbacks || feedbacks.length === 0) {
+    return <div className="text-blue-200 text-base mt-8">No feedback yet. Practice words in Echo Match to see your insights!</div>;
+  }
+  const latest = feedbacks[feedbacks.length - 1];
+  return <FeedbackCard feedback={latest} />;
+};
+
 export default Insights; 

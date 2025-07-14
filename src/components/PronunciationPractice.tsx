@@ -161,7 +161,7 @@ const PronunciationPractice: React.FC = () => {
         </div>
       </div>
       {/* Main Row: Echo Match (large), Learn Insights (right) */}
-      <div className="flex flex-row gap-8 w-full max-w-6xl mb-8">
+      <div className="flex flex-row gap-8 w-full max-w-6xl mb-8 mt-16">
         {/* Left: Large Echo Match Box and Tabs inside at the top */}
         <div className="flex-[1.2] flex flex-col items-end pr-4">
           {/* Echo Match Box (even larger) */}
@@ -169,7 +169,7 @@ const PronunciationPractice: React.FC = () => {
             {/* Tab Bar at the very top inside the box */}
             <div className="flex flex-row justify-center mt-6 mb-2 gap-4 w-full">
               <button
-                onClick={() => navigate('/flashcards')}
+                onClick={() => navigate('/flashcards-trainer')}
                 className="px-6 py-2 rounded-lg font-bold text-lg transition-all duration-200 bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow hover:from-purple-600 hover:to-blue-600"
               >
                 Flashcards
@@ -288,6 +288,11 @@ const PronunciationPractice: React.FC = () => {
             <div className="col-span-3 text-center text-gray-400 py-8">No recent activity.</div>
           )}
         </div>
+      </div>
+      {/* Navigation Buttons */}
+      <div className="flex flex-row justify-between w-full max-w-6xl mt-8 mb-12">
+        <button className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-8 py-3 rounded-xl text-lg shadow" onClick={() => navigate('/vocabpractice')}>Back</button>
+        <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-xl text-lg shadow" onClick={() => navigate('/spelling-practice')}>Next</button>
       </div>
     </div>
   );
