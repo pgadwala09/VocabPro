@@ -16,6 +16,10 @@ import Insights from './components/Insights';
 import TongueTwisterChallenge from './components/TongueTwisterChallenge';
 import MysterySoundBox from './components/MysterySoundBox';
 import SoundSafari from './components/SoundSafari';
+import FlashcardTrainer from './components/FlashcardTrainer';
+import SpellingPractice from './components/SpellingPractice';
+import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
+import DictationQuiz from './components/DictationQuiz';
 
 export interface LibraryItem {
   name: string;
@@ -164,11 +168,13 @@ function App() {
               <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
               <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
               <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
-              <Route path="/flashcards" element={<Flashcards />} />
+              <Route path="/spelling-practice" element={<SpellingPracticeTrainer />} />
               <Route path="/insights" element={<Insights />} />
               <Route path="/tongue-twister" element={<TongueTwisterChallenge />} />
               <Route path="/mystery-sound-box" element={<MysterySoundBox />} />
               <Route path="/sound-safari" element={<SoundSafari />} />
+              <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
+              <Route path="/dictation-quiz" element={<DictationQuiz />} />
               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>
