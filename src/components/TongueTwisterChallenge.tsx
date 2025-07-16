@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Play, RefreshCw, Share2, BarChart2, Users, Mic, StopCircle, X } from 'lucide-react';
 import { useVocabulary } from '../hooks/VocabularyContext';
+import { useFeedback } from '../hooks/FeedbackContext';
 
 const ADJECTIVES = ['fuzzy', 'funny', 'fast', 'fearless', 'fancy', 'frantic', 'fabulous', 'fantastic', 'fierce', 'friendly'];
 const ADVERBS = ['fiercely', 'frantically', 'frequently', 'fabulously', 'fastidiously', 'fondly', 'forcefully', 'formidably'];
@@ -45,6 +46,7 @@ function generateRandomTwister(): string {
 
 const TongueTwisterChallenge: React.FC = () => {
   const { vocabList } = useVocabulary();
+  const { addFeedback } = useFeedback();
   const [twister, setTwister] = useState('');
   const [timer, setTimer] = useState(10);
   const [isRecording, setIsRecording] = useState(false);
@@ -123,6 +125,20 @@ const TongueTwisterChallenge: React.FC = () => {
             : 'Keep practicing! Focus on slowing down and enunciating.'
         );
         setShowFeedback(true);
+        // Generate feedback in new format and add to FeedbackContext
+        const feedbackObj = {
+          word: twister,
+          score: clarityScore,
+          meaning: { value: 8, text: 'Fully understood' },
+          usage: { value: 7, text: 'Mostly appropriate' },
+          pronunciation: { value: Math.round(clarityScore / 10), text: clarityScore > 85 ? 'Excellent clarity' : clarityScore > 70 ? 'Good with minor slurs' : 'Needs improvement' },
+          suggestions: [
+            'Practice longer sentences',
+            'Slow down speech for difficult words.'
+          ],
+          date: new Date().toISOString(),
+        };
+        addFeedback(feedbackObj);
       };
       mediaRecorder.start();
       setIsRecording(true);
@@ -169,67 +185,67 @@ const TongueTwisterChallenge: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-700 via-pink-500 to-pink-300 py-12 px-4">
-      <div className="w-full max-w-xl mx-auto">
-        <h1 className="text-4xl font-bold text-white text-center mb-8 drop-shadow">Tongue Twister Challenge</h1>
-        {/* Twister Source Toggle */}
-        <div className="flex justify-center mb-6">
-          <select
-            className="px-4 py-2 rounded-lg bg-white/80 text-purple-900 font-semibold shadow focus:outline-none"
-            value={twisterSource}
-            onChange={e => setTwisterSource(e.target.value as 'vocab' | 'random')}
-          >
-            <option value="vocab">Use My Vocabulary</option>
-            <option value="random">AI/Random Words</option>
-          </select>
-        </div>
-        {/* Scoreboard Modal */}
-        {showScoreboard && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg relative">
-              <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={() => setShowScoreboard(false)}><X className="w-6 h-6" /></button>
-              <h2 className="text-2xl font-bold text-purple-800 mb-4 text-center">My Best Scoreboard</h2>
-              {scoreboard.length === 0 ? (
-                <div className="text-center text-gray-500">No attempts yet. Record a challenge to see your scores!</div>
-              ) : (
-                <div className="max-h-96 overflow-y-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="text-purple-700">
-                        <th className="py-2 px-2">Clarity</th>
-                        <th className="py-2 px-2">Twister</th>
-                        <th className="py-2 px-2">Feedback</th>
-                        <th className="py-2 px-2">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {scoreboard
-                        .sort((a, b) => b.clarity - a.clarity)
-                        .map((item, idx) => (
-                          <tr key={idx} className="border-b border-gray-200">
-                            <td className="py-1 px-2 font-bold text-green-700">{item.clarity}%</td>
-                            <td className="py-1 px-2 text-sm text-gray-800 max-w-[120px] truncate">{item.twister}</td>
-                            <td className="py-1 px-2 text-xs text-gray-600 max-w-[120px] truncate">{item.feedback}</td>
-                            <td className="py-1 px-2 text-xs text-gray-500">{item.date}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+    <div className="flex flex-col items-center justify-center bg-transparent pt-0 pb-12 px-4">
+      <div className="flex flex-col items-center justify-start w-[650px] h-[440px] bg-gradient-to-br from-purple-800 via-blue-800 to-blue-700 border-2 border-white rounded-2xl p-0 relative mb-6 mt-2" style={{boxShadow: '0 4px 40px 0 rgba(0,0,0,0.15)'}}>
+        <div className="w-full flex flex-col items-center px-10 py-6 h-full overflow-y-auto">
+          <h1 className="text-4xl font-bold text-white text-center mb-6 drop-shadow">Tongue Twister Challenge</h1>
+          {/* Twister Source Toggle */}
+          <div className="flex justify-center mb-4 w-full">
+            <select
+              className="px-4 py-2 rounded-lg bg-white/80 text-purple-900 font-semibold shadow focus:outline-none"
+              value={twisterSource}
+              onChange={e => setTwisterSource(e.target.value as 'vocab' | 'random')}
+            >
+              <option value="vocab">Use My Vocabulary</option>
+              <option value="random">AI/Random Words</option>
+            </select>
           </div>
-        )}
-        <div className="bg-white/10 rounded-3xl shadow-2xl p-8 flex flex-col items-center">
+          {/* Scoreboard Modal */}
+          {showScoreboard && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+              <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg relative">
+                <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={() => setShowScoreboard(false)}><X className="w-6 h-6" /></button>
+                <h2 className="text-2xl font-bold text-purple-800 mb-4 text-center">My Best Scoreboard</h2>
+                {scoreboard.length === 0 ? (
+                  <div className="text-center text-gray-500">No attempts yet. Record a challenge to see your scores!</div>
+                ) : (
+                  <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="text-purple-700">
+                          <th className="py-2 px-2">Clarity</th>
+                          <th className="py-2 px-2">Twister</th>
+                          <th className="py-2 px-2">Feedback</th>
+                          <th className="py-2 px-2">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scoreboard
+                          .sort((a, b) => b.clarity - a.clarity)
+                          .map((item, idx) => (
+                            <tr key={idx} className="border-b border-gray-200">
+                              <td className="py-1 px-2 font-bold text-green-700">{item.clarity}%</td>
+                              <td className="py-1 px-2 text-sm text-gray-800 max-w-[120px] truncate">{item.twister}</td>
+                              <td className="py-1 px-2 text-xs text-gray-600 max-w-[120px] truncate">{item.feedback}</td>
+                              <td className="py-1 px-2 text-xs text-gray-500">{item.date}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {/* Twister Text */}
           <div className="text-2xl font-bold text-white text-center mb-4">{twister}</div>
           {/* Timer */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-white font-semibold">Time Left:</span>
-            <span className="text-2xl font-mono text-pink-200">{timer}s</span>
+          <div className="flex flex-col items-center mb-4">
+            <span className="text-white font-semibold text-lg mb-1">Time Left</span>
+            <span className="text-3xl font-mono text-pink-200">{timer}s</span>
           </div>
           {/* Clarity Meter */}
-          <div className="w-full max-w-xs mb-4">
+          <div className="w-full max-w-md mb-4">
             <div className="flex justify-between text-xs text-white mb-1">
               <span>Clarity</span>
               <span>{clarity}%</span>
@@ -239,41 +255,43 @@ const TongueTwisterChallenge: React.FC = () => {
             </div>
           </div>
           {/* Record/Stop Button */}
-          {!isRecording ? (
-            <button
-              className="mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600"
-              onClick={handleStartChallenge}
-            >
-              <Mic className="w-6 h-6" /> Start Challenge
-            </button>
-          ) : (
-            <button
-              className="mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-red-500 text-white"
-              onClick={handleStopRecording}
-            >
-              <StopCircle className="w-6 h-6" /> Stop
-            </button>
-          )}
-          {/* Playback Button */}
-          {recordedUrl && !isRecording && (
-            <button
-              className="bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"
-              onClick={handlePlayRecording}
-              title="Play Your Recording"
-            >
-              <Play className="w-8 h-8 text-white" />
-              <audio ref={audioPlaybackRef} src={recordedUrl} />
-            </button>
-          )}
+          <div className="flex flex-col items-center mb-4">
+            {!isRecording ? (
+              <button
+                className="px-10 py-4 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600 mb-2"
+                onClick={handleStartChallenge}
+              >
+                <Mic className="w-6 h-6" /> Start Challenge
+              </button>
+            ) : (
+              <button
+                className="px-10 py-4 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-red-500 text-white mb-2"
+                onClick={handleStopRecording}
+              >
+                <StopCircle className="w-6 h-6" /> Stop
+              </button>
+            )}
+            {/* Playback Button */}
+            {recordedUrl && !isRecording && (
+              <button
+                className="bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"
+                onClick={handlePlayRecording}
+                title="Play Your Recording"
+              >
+                <Play className="w-8 h-8 text-white" />
+                <audio ref={audioPlaybackRef} src={recordedUrl} />
+              </button>
+            )}
+          </div>
           {/* Feedback */}
           {showFeedback && (
-            <div className="mt-6 text-white text-center bg-white/10 rounded-xl p-4 w-full">
+            <div className="mt-2 text-white text-center bg-white/10 rounded-xl p-4 w-full">
               <div className="font-semibold mb-2">AI Feedback</div>
               <div>{feedback}</div>
             </div>
           )}
           {/* Retry & Share Buttons */}
-          <div className="flex gap-4 mt-6">
+          <div className="flex gap-6 mt-4 w-full justify-center">
             <button className="px-6 py-2 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2" onClick={handleNewTwister}>
               <RefreshCw className="w-5 h-5" /> Try New Twister
             </button>
@@ -281,18 +299,18 @@ const TongueTwisterChallenge: React.FC = () => {
               <Share2 className="w-5 h-5" /> Share
             </button>
           </div>
-        </div>
-        {/* Footer Buttons */}
-        <div className="flex justify-between mt-8 gap-4">
-          <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={handleNewTwister}>
-            <RefreshCw className="w-5 h-5" /> Try New Twister
-          </button>
-          <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => setShowScoreboard(true)}>
-            <BarChart2 className="w-5 h-5" /> My Best Scoreboard
-          </button>
-          <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => {/* challenge friend logic */}}>
-            <Users className="w-5 h-5" /> Challenge a Friend
-          </button>
+          {/* Footer Buttons */}
+          <div className="flex justify-between mt-4 gap-4 w-full">
+            <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={handleNewTwister}>
+              <RefreshCw className="w-5 h-5" /> Try New Twister
+            </button>
+            <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => setShowScoreboard(true)}>
+              <BarChart2 className="w-5 h-5" /> My Best Scoreboard
+            </button>
+            <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => {/* challenge friend logic */}}>
+              <Users className="w-5 h-5" /> Challenge a Friend
+            </button>
+          </div>
         </div>
       </div>
     </div>

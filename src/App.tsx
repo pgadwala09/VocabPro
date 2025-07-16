@@ -20,6 +20,7 @@ import FlashcardTrainer from './components/FlashcardTrainer';
 import SpellingPractice from './components/SpellingPractice';
 import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
 import DictationQuiz from './components/DictationQuiz';
+import ImageSpell from './components/ImageSpell';
 
 export interface LibraryItem {
   name: string;
@@ -175,6 +176,7 @@ function App() {
               <Route path="/sound-safari" element={<SoundSafari />} />
               <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
               <Route path="/dictation-quiz" element={<DictationQuiz />} />
+              <Route path="/image-spell" element={<ImageSpell />} />
               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>
