@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, BookOpen, Zap, Users, Star, Brain, Image, Lightbulb, Target, ChevronDown, ChevronUp, Menu, X, Mic, FileText, BarChart3, Bot, SpellCheck as Spell, Share2, Upload, MessageSquare, HelpCircle, CreditCard, MoreHorizontal, Edit3, TrendingUp, UserCheck, Volume2, Monitor, Smartphone, Tablet, ArrowDown, Activity, Video, BarChart, Sparkles, Twitter, Instagram, Youtube, Linkedin, Github } from 'lucide-react';
+import { Play, BookOpen, Zap, Users, Star, Brain, Image, Lightbulb, Target, ChevronDown, ChevronUp, Menu, X, Mic, FileText, BarChart3, Bot, SpellCheck as Spell, Share2, Upload, MessageSquare, HelpCircle, CreditCard, MoreHorizontal, Edit3, TrendingUp, UserCheck, Volume2, Monitor, Smartphone, Tablet, ArrowDown, Activity, Video, BarChart, Sparkles, Twitter, Instagram, Youtube, Linkedin, Github, File, Music, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
 import Dashboard from './components/Dashboard';
@@ -7,6 +7,25 @@ import { useAuth } from './hooks/useAuth';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import VocabPractice from './components/vocabpractice';
 import LandingPage from './components/LandingPage';
+import PronunciationPractice from './components/PronunciationPractice';
+import { RecordingProvider } from './hooks/RecordingContext';
+import Flashcards from './components/Flashcards';
+import { VocabularyProvider } from './hooks/VocabularyContext';
+import { FeedbackProvider } from './hooks/FeedbackContext';
+import Insights from './components/Insights';
+import TongueTwisterChallenge from './components/TongueTwisterChallenge';
+import MysterySoundBox from './components/MysterySoundBox';
+import SoundSafari from './components/SoundSafari';
+import FlashcardTrainer from './components/FlashcardTrainer';
+import SpellingPractice from './components/SpellingPractice';
+import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
+import DictationQuiz from './components/DictationQuiz';
+
+export interface LibraryItem {
+  name: string;
+  type: 'file' | 'text' | 'audio' | 'screenshot' | 'link';
+  icon: React.ReactNode;
+}
 
 function App() {
   const [playingVideo, setPlayingVideo] = useState(false);
@@ -15,6 +34,23 @@ function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
   const { user, loading } = useAuth();
+
+  const initialLibraryItems: LibraryItem[] = [
+    // Documents
+    { name: 'EnglishNotes.pdf', type: 'file', icon: <File className="w-6 h-6 text-purple-600" /> },
+    { name: 'VocabularyList.docx', type: 'file', icon: <File className="w-6 h-6 text-purple-600" /> },
+    { name: 'EssayDraft.txt', type: 'file', icon: <FileText className="w-6 h-6 text-indigo-600" /> },
+    // Audio Files
+    { name: 'LectureAudio.wav', type: 'audio', icon: <Music className="w-6 h-6 text-blue-600" /> },
+    { name: 'PronunciationPractice.mp3', type: 'audio', icon: <Music className="w-6 h-6 text-blue-600" /> },
+    { name: 'StoryRecording.m4a', type: 'audio', icon: <Music className="w-6 h-6 text-blue-600" /> },
+    // Screenshots
+    { name: 'Screenshot1.png', type: 'screenshot', icon: <ImageIcon className="w-6 h-6 text-green-600" /> },
+    { name: 'VocabAppScreen.jpg', type: 'screenshot', icon: <ImageIcon className="w-6 h-6 text-green-600" /> },
+    { name: 'HomeworkSnap.png', type: 'screenshot', icon: <ImageIcon className="w-6 h-6 text-green-600" /> },
+  ];
+
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(initialLibraryItems);
 
   const mainFeatures = [
     {
@@ -122,15 +158,29 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
-        <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
-        <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/vocabpractice" element={user ? <VocabPractice /> : <Navigate to="/login" />} />
-        <Route path="/*" element={<LandingPage />} />
-      </Routes>
-    </BrowserRouter>
+    <FeedbackProvider>
+      <VocabularyProvider>
+        <RecordingProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
+              <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
+              <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
+              <Route path="/spelling-practice" element={<SpellingPracticeTrainer />} />
+              <Route path="/insights" element={<Insights />} />
+              <Route path="/tongue-twister" element={<TongueTwisterChallenge />} />
+              <Route path="/mystery-sound-box" element={<MysterySoundBox />} />
+              <Route path="/sound-safari" element={<SoundSafari />} />
+              <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
+              <Route path="/dictation-quiz" element={<DictationQuiz />} />
+              <Route path="/*" element={<LandingPage />} />
+            </Routes>
+          </BrowserRouter>
+        </RecordingProvider>
+      </VocabularyProvider>
+    </FeedbackProvider>
   );
 }
 

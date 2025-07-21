@@ -48,4 +48,14 @@ export const onAuthStateChange = (callback: (event: string, session: any) => voi
   return supabase.auth.onAuthStateChange(callback);
 };
 
+// Fetch spelling quiz words from Supabase
+export const fetchSpellingWords = async () => {
+  const { data, error } = await supabase
+    .from('spelling_words')
+    .select('word, syllables, rhyme, image')
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
 export { supabase };
