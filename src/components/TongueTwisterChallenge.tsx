@@ -43,7 +43,11 @@ function generateRandomTwister(): string {
   return `${adj.charAt(0).toUpperCase() + adj.slice(1)} ${chosen[0]} and ${chosen[1]} ${adv} ${verb} with ${chosen[2]}!`;
 }
 
-const TongueTwisterChallenge: React.FC = () => {
+interface TongueTwisterChallengeProps {
+  compact?: boolean;
+}
+
+const TongueTwisterChallenge: React.FC<TongueTwisterChallengeProps> = ({ compact = false }) => {
   const { vocabList } = useVocabulary();
   const [twister, setTwister] = useState('');
   const [timer, setTimer] = useState(10);
@@ -169,11 +173,11 @@ const TongueTwisterChallenge: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-700 via-pink-500 to-pink-300 py-12 px-4">
-      <div className="w-full max-w-xl mx-auto">
-        <h1 className="text-4xl font-bold text-white text-center mb-8 drop-shadow">Tongue Twister Challenge</h1>
+    <div className={compact ? "flex flex-col items-center justify-center w-full h-full" : "min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-700 via-pink-500 to-pink-300 py-12 px-4"}>
+      <div className={compact ? "w-full h-full flex flex-col items-center justify-center p-0 m-0" : "w-full max-w-xl mx-auto"} style={compact ? { maxWidth: 500, maxHeight: 340 } : {}}>
+        <h1 className={compact ? "text-2xl font-bold text-white text-center mb-2" : "text-4xl font-bold text-white text-center mb-8 drop-shadow"}>Tongue Twister Challenge</h1>
         {/* Twister Source Toggle */}
-        <div className="flex justify-center mb-6">
+        <div className={compact ? "flex justify-center mb-2" : "flex justify-center mb-6"}>
           <select
             className="px-4 py-2 rounded-lg bg-white/80 text-purple-900 font-semibold shadow focus:outline-none"
             value={twisterSource}
@@ -220,16 +224,16 @@ const TongueTwisterChallenge: React.FC = () => {
             </div>
           </div>
         )}
-        <div className="bg-white/10 rounded-3xl shadow-2xl p-8 flex flex-col items-center">
+        <div className={compact ? "bg-white/5 rounded-2xl shadow flex flex-col items-center w-full h-full p-2" : "bg-white/10 rounded-3xl shadow-2xl p-8 flex flex-col items-center"}>
           {/* Twister Text */}
-          <div className="text-2xl font-bold text-white text-center mb-4">{twister}</div>
+          <div className={compact ? "text-lg font-bold text-white text-center mb-2" : "text-2xl font-bold text-white text-center mb-4"}>{twister}</div>
           {/* Timer */}
-          <div className="flex items-center gap-2 mb-4">
+          <div className={compact ? "flex items-center gap-2 mb-2" : "flex items-center gap-2 mb-4"}>
             <span className="text-white font-semibold">Time Left:</span>
             <span className="text-2xl font-mono text-pink-200">{timer}s</span>
           </div>
           {/* Clarity Meter */}
-          <div className="w-full max-w-xs mb-4">
+          <div className={compact ? "w-full max-w-xs mb-2" : "w-full max-w-xs mb-4"}>
             <div className="flex justify-between text-xs text-white mb-1">
               <span>Clarity</span>
               <span>{clarity}%</span>
@@ -241,59 +245,60 @@ const TongueTwisterChallenge: React.FC = () => {
           {/* Record/Stop Button */}
           {!isRecording ? (
             <button
-              className="mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600"
+              className={compact ? "mt-2 px-6 py-2 rounded-full font-bold text-base shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600" : "mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600"}
               onClick={handleStartChallenge}
             >
-              <Mic className="w-6 h-6" /> Start Challenge
+              <Mic className="w-5 h-5" /> Start Challenge
             </button>
           ) : (
             <button
-              className="mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-red-500 text-white"
+              className={compact ? "mt-2 px-6 py-2 rounded-full font-bold text-base shadow flex items-center gap-2 bg-red-500 text-white" : "mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-red-500 text-white"}
               onClick={handleStopRecording}
             >
-              <StopCircle className="w-6 h-6" /> Stop
+              <StopCircle className="w-5 h-5" /> Stop
             </button>
           )}
           {/* Playback Button */}
           {recordedUrl && !isRecording && (
             <button
-              className="bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"
+              className={compact ? "bg-green-500 hover:bg-green-600 rounded-full w-12 h-12 flex items-center justify-center shadow-lg mt-2" : "bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"}
               onClick={handlePlayRecording}
               title="Play Your Recording"
             >
-              <Play className="w-8 h-8 text-white" />
+              <Play className={compact ? "w-6 h-6 text-white" : "w-8 h-8 text-white"} />
               <audio ref={audioPlaybackRef} src={recordedUrl} />
             </button>
           )}
           {/* Feedback */}
           {showFeedback && (
-            <div className="mt-6 text-white text-center bg-white/10 rounded-xl p-4 w-full">
+            <div className={compact ? "mt-2 text-white text-center bg-white/10 rounded-xl p-2 w-full" : "mt-6 text-white text-center bg-white/10 rounded-xl p-4 w-full"}>
               <div className="font-semibold mb-2">AI Feedback</div>
               <div>{feedback}</div>
             </div>
           )}
           {/* Retry & Share Buttons */}
-          <div className="flex gap-4 mt-6">
-            <button className="px-6 py-2 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2" onClick={handleNewTwister}>
+          <div className={compact ? "flex gap-2 mt-2" : "flex gap-4 mt-6"}>
+            <button className={compact ? "px-4 py-1 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2 text-sm" : "px-6 py-2 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2"} onClick={handleNewTwister}>
               <RefreshCw className="w-5 h-5" /> Try New Twister
             </button>
-            <button className="px-6 py-2 bg-pink-500 text-white rounded-lg font-semibold shadow hover:bg-pink-600 flex items-center gap-2" onClick={() => {/* share logic */}}>
+            <button className={compact ? "px-4 py-1 bg-pink-500 text-white rounded-lg font-semibold shadow hover:bg-pink-600 flex items-center gap-2 text-sm" : "px-6 py-2 bg-pink-500 text-white rounded-lg font-semibold shadow hover:bg-pink-600 flex items-center gap-2"} onClick={() => {/* share logic */}}>
               <Share2 className="w-5 h-5" /> Share
             </button>
           </div>
         </div>
-        {/* Footer Buttons */}
-        <div className="flex justify-between mt-8 gap-4">
-          <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={handleNewTwister}>
-            <RefreshCw className="w-5 h-5" /> Try New Twister
-          </button>
-          <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => setShowScoreboard(true)}>
-            <BarChart2 className="w-5 h-5" /> My Best Scoreboard
-          </button>
-          <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => {/* challenge friend logic */}}>
-            <Users className="w-5 h-5" /> Challenge a Friend
-          </button>
-        </div>
+        {!compact && (
+          <div className="flex justify-between mt-8 gap-4">
+            <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={handleNewTwister}>
+              <RefreshCw className="w-5 h-5" /> Try New Twister
+            </button>
+            <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => setShowScoreboard(true)}>
+              <BarChart2 className="w-5 h-5" /> My Best Scoreboard
+            </button>
+            <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={() => {/* challenge friend logic */}}>
+              <Users className="w-5 h-5" /> Challenge a Friend
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
