@@ -3,6 +3,8 @@ import { Upload, Link as LinkIcon, Image as ImageIcon, FileText, Mic, File, Musi
 import { useAuth } from '../hooks/useAuth';
 import { Dialog } from '@headlessui/react';
 import { LibraryItem } from '../App';
+import { useNavigate } from 'react-router-dom';
+import { useVocabulary } from '../hooks/VocabularyContext';
 
 interface VocabPracticeProps {
   libraryItems: LibraryItem[];
@@ -30,6 +32,7 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
     ? fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
 
+  const navigate = useNavigate();
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkInput, setLinkInput] = useState('');
   const [isScreenshotDialogOpen, setIsScreenshotDialogOpen] = useState(false);
@@ -42,9 +45,11 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
+  const { vocabList, setVocabList } = useVocabulary();
 
   const handleNext = () => {
     if (page < pageCount - 1) setPage(page + 1);
+    else navigate('/pronunciation');
   };
   const handleClear = () => {
     setLibraryItems([]);
@@ -83,7 +88,7 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
     }
   };
 
-  // Add text to library
+  // Add text to library and vocab
   const handleAddText = () => {
     if (textInput.trim()) {
       setLibraryItems([
@@ -94,6 +99,18 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
           icon: <FileText className="w-6 h-6 text-indigo-700" />,
         },
       ]);
+      // Add to vocabList if not already present
+      const word = textInput.trim();
+      if (!vocabList.some(v => v.word.toLowerCase() === word.toLowerCase())) {
+        setVocabList([
+          ...vocabList,
+          {
+            word,
+            meaning: `Meaning for ${word}.`,
+            sentence: `Sample sentence using ${word}.`,
+          },
+        ]);
+      }
       setTextInput('');
       setIsTextDialogOpen(false);
     }
@@ -393,8 +410,8 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
           <div className="flex gap-3">
             <button
               className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition disabled:opacity-50"
-              onClick={handleNext}
-              disabled={page >= pageCount - 1 || libraryItems.length === 0}
+              onClick={() => navigate('/pronunciation')}
+              disabled={libraryItems.length === 0}
             >
               Next
             </button>
