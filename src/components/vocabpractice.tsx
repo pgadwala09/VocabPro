@@ -213,12 +213,12 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-start pt-12 px-4 w-full">
         {/* Step 1: Choose an Option */}
-        <div className="w-full max-w-3xl mb-12">
+        <div className="w-full max-w-6xl mb-12">
           <div className="flex items-center mb-4">
             <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold mr-3">1</div>
             <span className="text-xl font-semibold text-white">Choose an Option</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-6">
             {optionTiles.map(tile => (
               <div
                 key={tile.label}
@@ -374,23 +374,23 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
           </div>
         </Dialog>
         {/* Step 2: Upload Your Source */}
-        <div className="w-full max-w-3xl mb-12">
+        <div className="w-full max-w-6xl mb-12">
           <div className="flex items-center mb-4">
             <div className="w-8 h-8 rounded-full bg-blue-400 text-white flex items-center justify-center font-bold mr-3">2</div>
             <span className="text-xl font-semibold text-white">Upload Your Source</span>
           </div>
-          <div className="flex flex-col items-center justify-center bg-white/80 rounded-2xl border-2 border-dashed border-blue-400 h-48 shadow-inner cursor-pointer transition hover:bg-blue-50">
+          <div className="flex flex-col items-center justify-center bg-white/80 rounded-2xl border-2 border-dashed border-blue-400 h-64 shadow-inner cursor-pointer transition hover:bg-blue-50">
             <span className="text-xl font-bold text-blue-700 mb-1">Browse Files</span>
             <span className="text-sm text-blue-400">or drag files in</span>
           </div>
         </div>
         {/* Library Section */}
-        <div className="w-full max-w-3xl mb-12">
+        <div className="w-full max-w-6xl mb-12">
           <div className="flex items-center mb-4">
             <span className="text-xl font-bold text-white mr-3">Library</span>
             <span className="text-base text-blue-200">- Documents you have saved</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-6">
             {pagedItems.map(item => (
               <div key={item.name} className="flex items-center bg-white/90 rounded-lg shadow p-4 gap-3 hover:shadow-lg transition">
                 <div>{item.icon}</div>
