@@ -83,7 +83,7 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Welcome Section */}
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
@@ -95,7 +95,7 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
         </div>
 
         {/* Dashboard Cards */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
           {/* Vocabulary Practice */}
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-purple-400/50 transition-all duration-300 transform hover:-translate-y-2">
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center mb-4">
@@ -111,15 +111,18 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
             </button>
           </div>
 
-          {/* Speaking Practice */}
+          {/* JAM Sessions */}
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-blue-400/50 transition-all duration-300 transform hover:-translate-y-2">
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center mb-4">
               <Mic className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Speaking</h3>
-            <p className="text-gray-300 mb-4">Record and improve your pronunciation</p>
-            <button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2 rounded-lg font-semibold transition-all duration-300">
-              Start Recording
+            <h3 className="text-xl font-bold text-white mb-2">JAM Sessions</h3>
+            <p className="text-gray-300 mb-4">Record and improve English Communication</p>
+            <button 
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+              onClick={() => navigate('/jamsessions')}
+            >
+              Practice Jam Sessions
             </button>
           </div>
 
@@ -149,9 +152,9 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
         </div>
 
         {/* Recent Activity */}
-        <section className="w-full max-w-4xl bg-white/90 rounded-2xl shadow-lg p-8 mb-8">
+        <section className="w-full max-w-6xl bg-white/90 rounded-2xl shadow-lg p-8 mb-8">
           <h2 className="text-2xl font-bold text-purple-900 mb-6">Recent Activity</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
             {Object.entries(grouped).map(([type, items]) => (
               <div key={type}>
                 <h3 className="text-lg font-semibold text-blue-700 mb-3">{type}</h3>
