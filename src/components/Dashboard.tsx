@@ -126,15 +126,18 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
             </button>
           </div>
 
-          {/* Progress Tracking */}
+          {/* Debates */}
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-indigo-400/50 transition-all duration-300 transform hover:-translate-y-2">
             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center mb-4">
               <BarChart3 className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Progress</h3>
-            <p className="text-gray-300 mb-4">Track your learning journey</p>
-            <button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-semibold transition-all duration-300">
-              View Stats
+            <h3 className="text-xl font-bold text-white mb-2">Debates</h3>
+            <p className="text-gray-300 mb-4">A way to become an efficient speaker</p>
+            <button 
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+              onClick={() => navigate('/debates')}
+            >
+              Practice Debate
             </button>
           </div>
 
