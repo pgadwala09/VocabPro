@@ -21,6 +21,8 @@ import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
 import DictationQuiz from './components/DictationQuiz';
 import PronunciationPractice from './components/PronunciationPractice';
 import JamSessions from './components/JamSessions';
+import Debates from './components/Debates';
+import DebateTournament from './components/DebateTournament';
 
 export interface LibraryItem {
   name: string;
@@ -164,20 +166,22 @@ function App() {
         <RecordingProvider>
           <BrowserRouter>
             <Routes>
-                             <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
-               <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
-               <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
-               <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
-               <Route path="/jamsessions" element={user ? <JamSessions /> : <Navigate to="/login" />} />
-               <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
-               <Route path="/spelling-practice" element={<SpellingPracticeTrainer />} />
-               <Route path="/insights" element={<Insights />} />
-               <Route path="/tongue-twister" element={<TongueTwisterChallenge />} />
-               <Route path="/mystery-sound-box" element={<MysterySoundBox />} />
-               <Route path="/sound-safari" element={<SoundSafari />} />
-               <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
-               <Route path="/dictation-quiz" element={<DictationQuiz />} />
-               <Route path="/*" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
+              <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
+              <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/jamsessions" element={user ? <JamSessions /> : <Navigate to="/login" />} />
+              <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
+              <Route path="/spelling-practice" element={<SpellingPracticeTrainer />} />
+              <Route path="/insights" element={<Insights />} />
+              <Route path="/tongue-twister" element={<TongueTwisterChallenge />} />
+              <Route path="/mystery-sound-box" element={<MysterySoundBox />} />
+              <Route path="/sound-safari" element={<SoundSafari />} />
+              <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
+              <Route path="/dictation-quiz" element={<DictationQuiz />} />
+              <Route path="/debates" element={user ? <Debates /> : <Navigate to="/login" />} />
+              <Route path="/debate-tournament" element={user ? <DebateTournament /> : <Navigate to="/login" />} />
+              <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>
         </RecordingProvider>
@@ -186,4 +190,4 @@ function App() {
   );
 }
 
-export default App
+export default App;
