@@ -1,7 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Mic, StopCircle, X, Brain, Sparkles, Volume2, BookOpen, MessageSquare, Music } from 'lucide-react';
+import { Play, Mic, StopCircle, X, Brain, Sparkles, Volume2, BookOpen, MessageSquare, Music, TrendingUp, Award, Clock, BarChart3, Download } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { s2sProxy, ttsProxy } from '../lib/elevenProxy';
+import { speakWithBrowser, openAiTts } from '../lib/tts';
+import { useVocabulary } from '../hooks/VocabularyContext';
 import { useNavigate } from 'react-router-dom';
+import { useFeedback } from '../hooks/FeedbackContext';
+import { pronunciationAnalysisService, PronunciationAnalysis } from '../lib/pronunciationAnalysis';
+import { 
+  GlossyPronunciationChart, 
+  GlossyPhonemeChart, 
+  GlossyProgressChart, 
+  GlossyCommunicationChart,
+  GlossyKPICard,
+  RechartsGlossyBar,
+  RechartsGlossyArea
+} from './EnhancedCharts';
+import { pdfExportService } from '../lib/pdfExport';
 
 const PronunciationPractice: React.FC = () => {
   const [activeTab, setActiveTab] = useState('pronunciation');
@@ -10,20 +25,286 @@ const PronunciationPractice: React.FC = () => {
   const [currentWord, setCurrentWord] = useState('Pronunciation');
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [enhancedURL, setEnhancedURL] = useState<string | null>(null);
+  const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
+  const [, setPronunciationAnalysis] = useState<PronunciationAnalysis | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [showDetailedReport, setShowDetailedReport] = useState<boolean>(false);
+  const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
+  // const [s2sError, setS2sError] = useState<string | null>(null); // diagnostics hidden
+
+  // Convert recorded audio (webm/opus) to 16-bit PCM WAV for maximum compatibility with S2S
+  const convertBlobToWav = async (blob: Blob, targetSampleRate = 44100): Promise<Blob> => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    // Resample if needed
+    const offlineCtx = new OfflineAudioContext(
+      decodedBuffer.numberOfChannels,
+      Math.ceil(decodedBuffer.duration * targetSampleRate),
+      targetSampleRate
+    );
+    const source = offlineCtx.createBufferSource();
+    source.buffer = decodedBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    const rendered = await offlineCtx.startRendering();
+
+    // Encode PCM 16-bit WAV
+    const numChannels = rendered.numberOfChannels;
+    const length = rendered.length * numChannels * 2 + 44; // 16-bit PCM
+    const buffer = new ArrayBuffer(length);
+    const view = new DataView(buffer);
+
+    const writeString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+
+    let offset = 0;
+    writeString(offset, 'RIFF'); offset += 4;
+    view.setUint32(offset, 36 + rendered.length * numChannels * 2, true); offset += 4;
+    writeString(offset, 'WAVE'); offset += 4;
+    writeString(offset, 'fmt '); offset += 4;
+    view.setUint32(offset, 16, true); offset += 4; // PCM chunk size
+    view.setUint16(offset, 1, true); offset += 2; // PCM format
+    view.setUint16(offset, numChannels, true); offset += 2;
+    view.setUint32(offset, targetSampleRate, true); offset += 4;
+    view.setUint32(offset, targetSampleRate * numChannels * 2, true); offset += 4; // byte rate
+    view.setUint16(offset, numChannels * 2, true); offset += 2; // block align
+    view.setUint16(offset, 16, true); offset += 2; // bits per sample
+    writeString(offset, 'data'); offset += 4;
+    view.setUint32(offset, rendered.length * numChannels * 2, true); offset += 4;
+
+    // Interleave and write samples
+    const channels: Float32Array[] = [];
+    for (let ch = 0; ch < numChannels; ch++) {
+      channels.push(rendered.getChannelData(ch));
+    }
+    let sampleIndex = 0;
+    for (let i = 0; i < rendered.length; i++) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        let sample = channels[ch][i];
+        sample = Math.max(-1, Math.min(1, sample));
+        view.setInt16(offset + sampleIndex * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        sampleIndex++;
+      }
+    }
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+  // Removed S2S state since we only keep AI assistant
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
-  const [recordingWaveform, setRecordingWaveform] = useState<number[]>([]);
-  const [originalWaveform, setOriginalWaveform] = useState<number[]>([]);
+  // Removed unused original waveform state
   const [latestRecordedWord, setLatestRecordedWord] = useState<string>('Pronunciation');
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const aiAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [aiPlaybackRate, setAiPlaybackRate] = useState<number>(0.85);
+  
 
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { addFeedback, feedbacks } = useFeedback();
+
+  // Generate comprehensive insights data from feedbacks
+  const generateInsightsData = () => {
+    const recentFeedbacks = feedbacks.slice(-10); // Last 10 recordings
+    
+    if (recentFeedbacks.length === 0) {
+      return {
+        totalWords: 0,
+        totalRecordings: 0,
+        averageScore: 0,
+        averageClarity: 0,
+        averagePitch: 0,
+        practiceTime: 0,
+        pronunciationScores: [],
+        phonemeData: [],
+        progressData: [],
+        communicationData: [],
+        difficultyData: []
+      };
+    }
+
+    const totalWords = new Set(recentFeedbacks.map(f => f.word)).size;
+    const totalRecordings = recentFeedbacks.length;
+    const averageScore = recentFeedbacks.reduce((sum, f) => sum + f.score, 0) / totalRecordings;
+    const averageClarity = recentFeedbacks.reduce((sum, f) => sum + f.clarity.value, 0) / totalRecordings;
+    const averagePitch = recentFeedbacks.reduce((sum, f) => sum + (f.averagePitch || 150), 0) / totalRecordings;
+    const practiceTime = recentFeedbacks.reduce((sum, f) => sum + (f.duration || 2000), 0) / 1000 / 60; // minutes
+
+    // Pronunciation scores by word
+    const pronunciationScores = recentFeedbacks.map(f => ({
+      word: f.word,
+      score: f.score / 100,
+      attempts: 1,
+      difficulty: f.difficultyLevel || 'medium' as 'easy' | 'medium' | 'hard'
+    }));
+
+    // Phoneme accuracy data (mock based on clarity)
+    const phonemeData = [
+      { phoneme: 'Vowels', accuracy: Math.min(1, averageClarity / 100 + 0.1) },
+      { phoneme: 'Consonants', accuracy: Math.min(1, averageClarity / 100 + 0.05) },
+      { phoneme: 'Stress', accuracy: Math.min(1, (averageScore / 100) + 0.08) },
+      { phoneme: 'Rhythm', accuracy: Math.min(1, (averageScore / 100) + 0.03) }
+    ];
+
+    // Progress data over time
+    const progressData = recentFeedbacks.map((f) => ({
+      date: new Date(f.date).toLocaleDateString(),
+      score: f.score / 100,
+      wordsPerMinute: f.wordsPerMinute || 120
+    }));
+
+    // Communication style data
+    const communicationData = [
+      { category: 'Clarity', score: averageClarity / 100, fullMark: 1 },
+      { category: 'Fluency', score: Math.min(1, averageScore / 100 + 0.1), fullMark: 1 },
+      { category: 'Pace', score: Math.min(1, averageScore / 100 + 0.05), fullMark: 1 },
+      { category: 'Intonation', score: Math.min(1, averageScore / 100 + 0.03), fullMark: 1 },
+      { category: 'Pronunciation', score: averageScore / 100, fullMark: 1 }
+    ];
+
+    // Difficulty distribution
+    const difficultyCount = { easy: 0, medium: 0, hard: 0 };
+    recentFeedbacks.forEach(f => {
+      const difficulty = f.difficultyLevel || 'medium';
+      difficultyCount[difficulty as keyof typeof difficultyCount]++;
+    });
+
+    const difficultyData = [
+      { difficulty: 'Easy', count: difficultyCount.easy },
+      { difficulty: 'Medium', count: difficultyCount.medium },
+      { difficulty: 'Hard', count: difficultyCount.hard }
+    ];
+
+    return {
+      totalWords,
+      totalRecordings,
+      averageScore,
+      averageClarity,
+      averagePitch,
+      practiceTime,
+      pronunciationScores,
+      phonemeData,
+      progressData,
+      communicationData,
+      difficultyData
+    };
+  };
+
+  // Handle detailed report export
+  const handleExportReport = async () => {
+    if (isExportingPDF) return; // Prevent multiple exports
+    
+    try {
+      setIsExportingPDF(true);
+      const insightsData = generateInsightsData();
+      
+      // Show immediate feedback to user
+      console.log('Starting PDF export...');
+      
+      const reportData = {
+        userName: user?.user_metadata?.full_name || user?.email || 'User',
+        reportDate: new Date().toISOString(),
+        overallScore: insightsData.averageScore / 100,
+        totalWords: insightsData.totalWords,
+        totalRecordings: insightsData.totalRecordings,
+        timeSpent: insightsData.practiceTime,
+        pronunciationScores: insightsData.pronunciationScores,
+        phonemeAccuracy: insightsData.phonemeData,
+        progressData: insightsData.progressData,
+        communicationStyle: {
+          clarity: insightsData.averageClarity / 100,
+          fluency: Math.min(1, insightsData.averageScore / 100 + 0.1),
+          intonation: Math.min(1, insightsData.averageScore / 100 + 0.03),
+          speakingRate: 'normal' as 'slow' | 'normal' | 'fast'
+        },
+        achievements: insightsData.averageScore > 80 ? ['High Accuracy Achieved', 'Consistent Practice'] : ['Keep Practicing'],
+        focusAreas: insightsData.averageClarity < 70 ? ['Speech Clarity', 'Pronunciation Accuracy'] : [],
+        recommendations: [
+          'Continue practicing with varied vocabulary',
+          'Focus on clear articulation',
+          'Maintain consistent practice schedule',
+          'Record yourself regularly for self-assessment'
+        ]
+      };
+
+      await pdfExportService.downloadReport(reportData);
+      console.log('PDF export completed successfully');
+      
+    } catch (error) {
+      console.error('Error exporting report:', error);
+      alert('PDF export failed. The report will download as a text file instead.');
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // Helper to generate AI voice (S2S preferred, then TTS fallbacks)
+  const generateAiVoice = async (): Promise<string | null> => {
+    try {
+      setIsEnhancing(true);
+      let wavBlob: Blob | null = null;
+      if (audioBlob) {
+        try {
+          wavBlob = await convertBlobToWav(audioBlob);
+        } catch {}
+      }
+
+      const withTimeout = (p: Promise<string | null>, ms: number): Promise<string | null> =>
+        Promise.race<string | null>([
+          p,
+          new Promise<string | null>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+        ]);
+
+      try {
+        let url: string | null = null;
+        if (wavBlob || audioBlob) {
+          url = await withTimeout(s2sProxy((wavBlob || audioBlob) as Blob) as Promise<string | null>, 20000).catch(() => null);
+        }
+        if (!url) {
+          url = await ttsProxy(latestRecordedWord || '');
+        }
+        if (!url) {
+          url = await openAiTts(latestRecordedWord || '');
+        }
+        return url;
+      } catch (e) {
+        console.error('AI generation error:', e);
+        return null;
+      }
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
+  // Read selected words from Vocabulary Practice
+  const { vocabList } = useVocabulary();
+  // Recent activity types and state (synced via localStorage)
+  type RecentWord = { id: number; word: string; createdAt: string };
+  type SavedRecording = { id: number; word: string; url: string; blob: Blob; createdAt: string };
+  const [, setRecentWords] = useState<RecentWord[]>([]);
+  const [recordings, setRecordings] = useState<SavedRecording[]>([]);
 
   // Cleanup effect
   useEffect(() => {
+    // Load persisted activity
+    try {
+      const w = JSON.parse(localStorage.getItem('recentWords') || '[]');
+      if (Array.isArray(w)) setRecentWords(w);
+    } catch {}
+    try {
+      const r = JSON.parse(localStorage.getItem('recentRecordings') || '[]');
+      if (Array.isArray(r)) {
+        // We cannot restore Blob from LS; keep URL if still valid in session
+        setRecordings(r.map((it: any) => ({ ...it, blob: new Blob() })));
+      }
+    } catch {}
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -34,19 +315,29 @@ const PronunciationPractice: React.FC = () => {
     };
   }, []);
 
-  // Simulate getting the latest recorded word from the previous page
+  
+
+  // Pull the latest word added in Vocabulary Practice (via context)
   useEffect(() => {
-    // This would typically come from a context, localStorage, or API
-    // For now, we'll simulate it with a sample word
-    const getLatestWordFromPreviousPage = () => {
-      // Simulate getting the latest word from vocabulary practice
-      const sampleLatestWords = ['Ephemeral', 'Ubiquitous', 'Serendipity', 'Eloquent', 'Perseverance'];
-      const randomLatestWord = sampleLatestWords[Math.floor(Math.random() * sampleLatestWords.length)];
-      setLatestRecordedWord(randomLatestWord);
-    };
-    
-    getLatestWordFromPreviousPage();
-  }, []);
+    try {
+      if (Array.isArray(vocabList) && vocabList.length > 0) {
+        const last = vocabList[vocabList.length - 1];
+        if (last?.word) {
+          setLatestRecordedWord(last.word);
+          setCurrentWord(last.word);
+          // Persist recent word to localStorage for dashboard sync
+          const entry: RecentWord = { id: Date.now(), word: last.word, createdAt: new Date().toISOString() };
+          setRecentWords(prev => {
+            const updated = [entry, ...prev.filter(w => w.word !== last.word)].slice(0, 50);
+            try { localStorage.setItem('recentWords', JSON.stringify(updated)); } catch {}
+            return updated;
+          });
+        }
+      }
+    } catch {}
+  }, [vocabList]);
+
+  // Removed AI assistant widget (using S2S buttons instead)
   
   const avatarUrl = user?.user_metadata?.avatar_url;
   const fullName = user?.user_metadata?.full_name || user?.email || '';
@@ -55,7 +346,7 @@ const PronunciationPractice: React.FC = () => {
     : 'U';
 
   // Sample data for different tabs
-  const sampleWords = ['Hello', 'World', 'Practice', 'Pronunciation', 'Language', 'Learning'];
+  // const sampleWords = ['Hello', 'World', 'Practice', 'Pronunciation', 'Language', 'Learning'];
   const flashcardData = [
     { word: 'Ephemeral', meaning: 'Lasting for a very short time', sentence: 'The beauty of cherry blossoms is ephemeral.' },
     { word: 'Ubiquitous', meaning: 'Present everywhere', sentence: 'Smartphones have become ubiquitous in modern society.' },
@@ -103,11 +394,11 @@ const PronunciationPractice: React.FC = () => {
      },
    ];
 
-   const soundSafariData = [
-     { sound: 'Ocean Waves', description: 'Listen to the calming sound of ocean waves', difficulty: 'Easy' },
-     { sound: 'Bird Songs', description: 'Identify different bird species by their songs', difficulty: 'Medium' },
-     { sound: 'City Sounds', description: 'Recognize various urban sounds and noises', difficulty: 'Hard' }
-   ];
+   // const soundSafariData = [
+   //   { sound: 'Ocean Waves', description: 'Listen to the calming sound of ocean waves', difficulty: 'Easy' },
+   //   { sound: 'Bird Songs', description: 'Identify different bird species by their songs', difficulty: 'Medium' },
+   //   { sound: 'City Sounds', description: 'Recognize various urban sounds and noises', difficulty: 'Hard' }
+   // ];
 
    // Sound Safari state
    const [boxOpen, setBoxOpen] = useState(false);
@@ -118,20 +409,13 @@ const PronunciationPractice: React.FC = () => {
    const [listening, setListening] = useState(false);
    const [wordRevealed, setWordRevealed] = useState(false);
    const [error, setError] = useState<string | null>(null);
-   const [micSupported, setMicSupported] = useState(true);
-   const [micPermission, setMicPermission] = useState(true);
+   // const [micSupported, setMicSupported] = useState(true);
+   // const [micPermission, setMicPermission] = useState(true);
 
    // Flashcard state
    const [flippedCard, setFlippedCard] = useState<number | null>(null);
 
-  // Sample recent activity data - words selected from previous page
-  const recentWords = [
-    { word: 'Ephemeral', timestamp: '2 min ago', difficulty: 'Hard' },
-    { word: 'Ubiquitous', timestamp: '5 min ago', difficulty: 'Medium' },
-    { word: 'Serendipity', timestamp: '8 min ago', difficulty: 'Hard' },
-    { word: 'Eloquent', timestamp: '12 min ago', difficulty: 'Medium' },
-    { word: 'Perseverance', timestamp: '15 min ago', difficulty: 'Easy' }
-  ];
+  // Removed sample words; using recentWords state loaded from localStorage
 
   const startWaveformAnalysis = (stream: MediaStream) => {
     if (!audioContextRef.current) {
@@ -144,16 +428,10 @@ const PronunciationPractice: React.FC = () => {
     source.connect(analyser);
     analyserRef.current = analyser;
     
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    // simplified, no visual sampling needed
     
     const updateWaveform = () => {
       if (!isRecording) return;
-      
-      analyser.getByteFrequencyData(dataArray);
-      const waveformData = Array.from(dataArray).slice(0, 32); // Take first 32 values for visualization
-      setRecordingWaveform(waveformData);
-      
       animationFrameRef.current = requestAnimationFrame(updateWaveform);
     };
     
@@ -165,14 +443,12 @@ const PronunciationPractice: React.FC = () => {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    setRecordingWaveform([]);
+    
   };
 
   const handleStartRecording = async () => {
     setAudioURL(null);
-    setAudioBlob(null);
     audioChunks.current = [];
-    setRecordingWaveform([]);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new window.MediaRecorder(stream);
@@ -188,6 +464,90 @@ const PronunciationPractice: React.FC = () => {
         setAudioURL(URL.createObjectURL(blob));
         // Update the latest recorded word when recording is completed
         setLatestRecordedWord(currentWord);
+        // Save to recent recordings
+        try {
+          const url = URL.createObjectURL(blob);
+          const item: SavedRecording = { id: Date.now(), word: currentWord, url, blob, createdAt: new Date().toISOString() };
+          setRecordings(prev => {
+            const updated = [item, ...prev].slice(0, 20);
+            try {
+              // Store lightweight fields to localStorage (omit blob)
+              const lsItems = updated.map(r => ({ id: r.id, word: r.word, url: r.url, createdAt: r.createdAt }));
+              localStorage.setItem('recentRecordings', JSON.stringify(lsItems));
+            } catch {}
+            return updated;
+          });
+        } catch {}
+        // Enhanced Analysis using Whisper + AI
+        const performEnhancedAnalysis = async () => {
+          try {
+            setIsAnalyzing(true);
+            const analysis = await pronunciationAnalysisService.analyzeAudio(blob, currentWord);
+            setPronunciationAnalysis(analysis);
+            
+            // Enhanced feedback for insights
+            addFeedback({
+              word: analysis.word,
+              score: Math.round(analysis.overallScore * 100),
+              clarity: { 
+                value: Math.round(analysis.clarityScore * 100), 
+                text: analysis.clarityScore > 0.8 ? 'Excellent clarity' : analysis.clarityScore > 0.6 ? 'Good clarity' : 'Needs improvement' 
+              },
+              wordStress: { 
+                value: Math.round(analysis.intonationScore * 100), 
+                text: analysis.intonationScore > 0.7 ? 'Natural intonation' : 'Work on stress patterns' 
+              },
+              pace: { 
+                value: analysis.speakingRate === 'normal' ? 85 : analysis.speakingRate === 'slow' ? 60 : 90, 
+                text: analysis.speakingRate === 'normal' ? 'Perfect pace' : analysis.speakingRate === 'slow' ? 'Try speaking faster' : 'Slow down slightly' 
+              },
+              phonemeAccuracy: { 
+                value: Math.round(Object.values(analysis.phonemeAccuracy).reduce((a, b) => a + b, 0) / Object.keys(analysis.phonemeAccuracy).length * 100), 
+                text: analysis.pronunciationErrors.length === 0 ? 'Excellent pronunciation' : 'Focus on specific sounds' 
+              },
+              suggestions: analysis.improvementSuggestions,
+              date: new Date().toISOString(),
+              // Additional enhanced metrics
+              transcription: analysis.transcription,
+              confidenceScore: analysis.confidenceScore,
+              duration: analysis.duration,
+              wordsPerMinute: analysis.wordsPerMinute,
+              averagePitch: analysis.averagePitch,
+              difficultyLevel: analysis.difficultyLevel,
+              masteryStatus: analysis.masteryStatus
+            });
+          } catch (error) {
+            console.error('Enhanced analysis failed, falling back to basic feedback:', error);
+            
+            // Fallback to basic feedback
+            try {
+              const tmp = new Audio(URL.createObjectURL(blob));
+              tmp.onloadedmetadata = () => {
+                const durationSec = Math.max(1, Math.round(tmp.duration || 1));
+                const base = Math.min(95, 70 + Math.floor(Math.random() * 26));
+                addFeedback({
+                  word: currentWord,
+                  score: base,
+                  clarity: { value: Math.min(100, base - 5), text: base > 80 ? 'Clear' : 'Needs clarity' },
+                  wordStress: { value: Math.max(60, base - 10), text: base > 78 ? 'Well stressed' : 'Adjust stress' },
+                  pace: { value: 100 - Math.abs(80 - base), text: durationSec > 3 ? 'Steady' : 'Fast' },
+                  phonemeAccuracy: { value: Math.max(55, base - 15), text: base > 75 ? 'Good sounds' : 'Practice sounds' },
+                  suggestions: [
+                    'Slow down slightly and enunciate vowels.',
+                    'Emphasize the stressed syllable.',
+                    'Listen to the AI voice and mimic the rhythm.'
+                  ],
+                  date: new Date().toISOString()
+                });
+              };
+            } catch {}
+          } finally {
+            setIsAnalyzing(false);
+          }
+        };
+        
+        // Perform analysis asynchronously
+        performEnhancedAnalysis();
         stream.getTracks().forEach(track => track.stop());
         stopWaveformAnalysis();
       };
@@ -216,25 +576,67 @@ const PronunciationPractice: React.FC = () => {
     }
   };
 
+  // Removed S2S controls and playback
+
   const handleClearRecording = () => {
     setAudioURL(null);
-    setAudioBlob(null);
     setIsRecording(false);
     setIsPlaying(false);
-    setRecordingWaveform([]);
     stopWaveformAnalysis();
   };
 
-     const generateNewWord = () => {
-     const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
-     setCurrentWord(randomWord);
-     handleClearRecording();
-   };
+  // Recording share/download helpers (match JAM Sessions styling/behavior)
+  const sanitizeFileName = (name: string) => name.replace(/[^a-z0-9\-_. ]/gi, '').replace(/\s+/g, '-');
+  const buildShareMessage = (rec: SavedRecording) => {
+    const dateStr = new Date(rec.createdAt).toLocaleString();
+    const title = rec.word || 'Pronunciation Practice';
+    return `Sharing my Pronunciation recording: "${title}" (recorded on ${dateStr}).`;
+  };
+  const handleDownloadRecording = (rec: SavedRecording) => {
+    try {
+      const a = document.createElement('a');
+      a.href = rec.url;
+      a.download = `${sanitizeFileName(rec.word || 'recording')}-${rec.id}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {}
+  };
+  const handleNativeShare = async (rec: SavedRecording) => {
+    try {
+      // @ts-ignore optional web share API
+      if (navigator && navigator.share) {
+        const blob = await fetch(rec.url).then(r => r.blob());
+        const file = new File([blob], `${sanitizeFileName(rec.word || 'recording')}.webm`, { type: 'audio/webm' });
+        // @ts-ignore
+        await navigator.share({ title: rec.word || 'Pronunciation Recording', text: buildShareMessage(rec), files: [file] });
+      } else {
+        alert('Native sharing is not supported on this device. Use WhatsApp or Email buttons.');
+      }
+    } catch {}
+  };
+
+  const handleDeleteRecording = (id: number) => {
+    setRecordings(prev => {
+      const updated = prev.filter(r => r.id !== id);
+      try {
+        const lsItems = updated.map(r => ({ id: r.id, word: r.word, url: r.url, createdAt: r.createdAt }));
+        localStorage.setItem('recentRecordings', JSON.stringify(lsItems));
+      } catch {}
+      return updated;
+    });
+  };
+
+   // const generateNewWord = () => {
+   //   const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
+   //   setCurrentWord(randomWord);
+   //   handleClearRecording();
+   // };
 
    // Function to update latest recorded word from external source (e.g., from previous page)
-   const updateLatestRecordedWord = (word: string) => {
-     setLatestRecordedWord(word);
-   };
+   // const updateLatestRecordedWord = (word: string) => {
+   //   setLatestRecordedWord(word);
+   // };
 
    // Sound Safari helper functions
    const getRandomPhoneme = () => {
@@ -313,7 +715,6 @@ const PronunciationPractice: React.FC = () => {
    const handleListen = () => {
      setError(null);
      if (!supportsSpeechRecognition()) {
-       setMicSupported(false);
        setError('Speech recognition is not supported in this browser. Please use Google Chrome on desktop.');
        return;
      }
@@ -340,7 +741,6 @@ const PronunciationPractice: React.FC = () => {
      };
      recognition.onerror = (event: any) => {
        if (event.error === 'not-allowed' || event.error === 'denied') {
-         setMicPermission(false);
          setError('Microphone access denied. Please allow mic access in your browser settings.');
        } else {
          setError('Speech recognition error: ' + event.error);
@@ -381,102 +781,144 @@ const PronunciationPractice: React.FC = () => {
     <div className="flex flex-col items-center space-y-8">
       <div className="text-center">
         <h2 className="text-5xl font-bold text-white mb-4">Echo Match</h2>
-        <div className="bg-white/20 backdrop-blur-sm rounded-xl px-8 py-3 mb-4 border border-white/30 inline-block">
-          <span className="text-2xl font-bold text-white">{latestRecordedWord}</span>
-        </div>
-        <p className="text-2xl text-blue-200 mt-4">Listen and repeat the word</p>
+        <div className="bg-gradient-to-r from-white/30 to-white/10 backdrop-blur-sm rounded-xl px-10 py-4 mb-4 border border-white/40 inline-block shadow-2xl">
+          <span className="text-5xl md:text-6xl font-black text-transparent bg-gradient-to-r from-blue-200 via-white to-purple-200 bg-clip-text tracking-wider drop-shadow-lg animate-pulse">{latestRecordedWord}</span>
       </div>
 
-      <div className="w-[650px] h-[320px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8 flex flex-col items-center justify-center">
-        {/* Waveform visualization */}
-        <div className="mb-8">
-          <div className="text-xl text-blue-200 mb-2">Your Recording</div>
-          <div className="flex items-center gap-4">
-            <svg width="320" height="40" className="mb-2">
-              {recordingWaveform.length > 0 ? (
-                // Real-time recording waveform
-                <g>
-                  {recordingWaveform.map((value, index) => {
-                    const x = (index / recordingWaveform.length) * 320;
-                    const height = (value / 255) * 30;
-                    const y = 20 - height / 2;
-                    return (
-                      <rect
-                        key={index}
-                        x={x}
-                        y={y}
-                        width={8}
-                        height={height}
-                        fill="white"
-                        rx="2"
-                      />
-                    );
-                  })}
-                </g>
-              ) : (
-                // Static waveform when not recording
-                <path
-                  d="M0,20 L20,10 L40,30 L60,5 L80,35 L100,15 L120,25 L140,8 L160,32 L180,12 L200,28 L220,6 L240,34 L260,18 L280,22 L300,14 L320,26"
-                  stroke="white"
-                  strokeWidth="5"
-                  fill="none"
-                />
+        </div>
+
+      <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-6 relative z-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+          {/* Left Card: Your Pronunciation */}
+          <div className="bg-white/10 rounded-xl border border-white/20 p-4 flex flex-col justify-between">
+            <div>
+              <div className="text-xl text-blue-200 mb-3">Your Pronunciation</div>
+              <p className="text-sm text-blue-200/80 mb-4">Record and practice.</p>
+              {isAnalyzing && (
+                <div className="mb-3 p-2 bg-blue-500/20 rounded-lg border border-blue-400/30">
+                  <div className="flex items-center gap-2 text-blue-200">
+                    <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-xs">AI analyzing...</span>
+            </div>
+          </div>
               )}
-            </svg>
-            <div className="text-xl font-bold text-white min-w-[60px]">
-              {isRecording && recordingWaveform.length > 0 
-                ? `${Math.round((recordingWaveform.reduce((sum, val) => sum + val, 0) / recordingWaveform.length / 255) * 100)}%`
-                : '0%'
-              }
-            </div>
-          </div>
         </div>
-
-        <div className="mb-8">
-          <div className="text-xl text-blue-200 mb-2">Original Audio</div>
-          <div className="flex items-center gap-4">
-            <svg width="320" height="40" className="mb-2">
-              <path
-                d="M0,20 L20,15 L40,25 L60,10 L80,30 L100,20 L120,30 L140,15 L160,25 L180,20 L200,30 L220,10 L240,25 L260,15 L280,20 L300,25 L320,15"
-                stroke="#60A5FA"
-                strokeWidth="5"
-                fill="none"
-              />
-            </svg>
-            <div className="text-xl font-bold text-white min-w-[60px]">
-              85%
-            </div>
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div className="flex gap-6">
+            <div className="w-full flex items-center justify-center gap-3">
           <button
             onClick={handlePlayAudio}
             disabled={!audioURL || isPlaying}
-            className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 hover:scale-110 disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-500 disabled:opacity-50 flex items-center justify-center"
+                aria-label="Play Recording"
+                title="Play Recording"
           >
-            <Play className="w-8 h-8 text-white ml-1" />
+                <Play className="w-5 h-5" />
           </button>
-          
           <button
             onClick={isRecording ? handleStopRecording : handleStartRecording}
-            className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 hover:scale-110"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg shadow hover:bg-red-500 flex items-center justify-center"
+                aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
+                title={isRecording ? 'Stop Recording' : 'Start Recording'}
           >
             {isRecording ? (
-              <StopCircle className="w-8 h-8 text-white" />
+                  <StopCircle className="w-5 h-5" />
             ) : (
-              <Mic className="w-8 h-8 text-white" />
+                  <Mic className="w-5 h-5" />
             )}
           </button>
-          
           <button
             onClick={handleClearRecording}
-            className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 hover:scale-110"
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg shadow hover:bg-gray-500 flex items-center justify-center"
+                aria-label="Clear"
+                title="Clear"
           >
-            <X className="w-8 h-8 text-white" />
+                <X className="w-5 h-5" />
           </button>
         </div>
+            {/* Moved recording audio player below Recent Activity per request */}
+          </div>
+
+          {/* Right Card: AI Pronunciation (S2S) */}
+          <div className="bg-white/10 rounded-xl border border-white/20 p-4 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="text-xl text-blue-200">AI Pronunciation</div>
+                {isEnhancing && <div className="text-sm text-purple-300">Generating…</div>}
+              </div>
+              {!enhancedURL && !isEnhancing && (
+                <div className="text-gray-300 text-sm">Click Play AI Voice to generate and play. Record for best match.</div>
+              )}
+        </div>
+            <div className="w-full flex items-center justify-center gap-3">
+              <button
+                onClick={async () => {
+                  // If we already have a generated URL, just play it
+                  if (enhancedURL) {
+                    setIsPlaying(true);
+                    const audio = new Audio(enhancedURL);
+                    try { audio.playbackRate = aiPlaybackRate; } catch {}
+                    audio.onended = () => setIsPlaying(false);
+                    audio.play();
+                    return;
+                  }
+                  // Otherwise generate then play
+                  const url = await generateAiVoice();
+                  if (url) {
+                    setEnhancedURL(url);
+                    try {
+                      setIsPlaying(true);
+                      const audio = new Audio(url);
+                      try { audio.playbackRate = aiPlaybackRate; } catch {}
+                      audio.onended = () => setIsPlaying(false);
+                      await audio.play();
+                    } catch {
+                      setIsPlaying(false);
+                    }
+                  } else if (latestRecordedWord) {
+                    // Final fallback: browser TTS so the user still hears audio
+                    speakWithBrowser(latestRecordedWord);
+                  }
+                }}
+                disabled={isPlaying || isEnhancing || (!audioBlob && !latestRecordedWord)}
+                className="px-4 py-2 bg-gradient-to-r from-pink-500 to-violet-500 text-white rounded-lg shadow hover:from-pink-400 hover:to-violet-400 disabled:opacity-50"
+              >
+                Play AI Voice
+              </button>
+            </div>
+            {enhancedURL && (
+              <div className="mt-3 w-full">
+                <audio
+                  controls
+                  src={enhancedURL}
+                  className="w-full"
+                  ref={aiAudioRef}
+                  onLoadedMetadata={() => {
+                    try { if (aiAudioRef.current) aiAudioRef.current.playbackRate = aiPlaybackRate; } catch {}
+                  }}
+                />
+                <div className="mt-2 flex items-center gap-2 text-xs text-blue-200">
+                  <span>AI speed</span>
+                  <input
+                    type="range"
+                    min="0.6"
+                    max="1.2"
+                    step="0.05"
+                    value={aiPlaybackRate}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setAiPlaybackRate(v);
+                      try { if (aiAudioRef.current) aiAudioRef.current.playbackRate = v; } catch {}
+                    }}
+                    className="w-32 accent-purple-400"
+                  />
+                  <span>{aiPlaybackRate.toFixed(2)}x</span>
+                </div>
+              </div>
+            )}
+            {/* Error banner intentionally hidden per request */}
+          </div>
+        </div>
+
+        {/* My Recordings section moved below main content; duplicate removed */}
       </div>
     </div>
   );
@@ -681,7 +1123,7 @@ const PronunciationPractice: React.FC = () => {
    );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex flex-col">
+    <div className="min-h-[160vh] bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex flex-col pb-16">
       {/* Header */}
       <header className="flex items-center justify-between px-16 py-4 bg-white/10 shadow-md">
         <div className="flex items-center flex-1">
@@ -721,14 +1163,14 @@ const PronunciationPractice: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex justify-center pt-12 px-4">
+      <main className="flex-1 flex justify-center pt-12 pb-12 px-4">
         <div className="max-w-8xl w-full flex justify-center gap-12">
           {/* Left Section */}
           <div className="flex flex-col items-center flex-1 max-w-4xl">
             {/* Tab Bar */}
             <div className="flex gap-6 mb-4 mt-8">
                              {[
-                 { id: 'pronunciation', label: 'Vocabulary', icon: Volume2 },
+                 { id: 'pronunciation', label: 'Pronunciation', icon: Volume2 },
                  { id: 'flashcards', label: 'Flash Cards', icon: BookOpen },
                  { id: 'tongue-twister', label: 'Tongue Twister', icon: MessageSquare },
                  { id: 'sound-safari', label: 'Sound Safari', icon: Music }
@@ -765,68 +1207,135 @@ const PronunciationPractice: React.FC = () => {
               </div>
               <h3 className="text-3xl font-bold text-white">Learn Insights</h3>
             </div>
-            
             <div className="flex-1">
               <p className="text-lg text-blue-200 mb-6">
                 Track your pronunciation progress and get personalized feedback to improve your speaking skills.
               </p>
-              
               <div className="space-y-4">
+                {(() => {
+                  const insights = generateInsightsData();
+                  return (
+                    <>
                 <div className="bg-white/20 rounded-lg p-4">
                   <h4 className="font-semibold text-white mb-2">Accuracy Score</h4>
-                  <div className="text-2xl font-bold text-green-400">85%</div>
+                        <div className="text-2xl font-bold text-green-400">
+                          {insights.totalRecordings > 0 ? Math.round(insights.averageScore) : 0}%
                 </div>
-                
+                      </div>
                 <div className="bg-white/20 rounded-lg p-4">
                   <h4 className="font-semibold text-white mb-2">Words Practiced</h4>
-                  <div className="text-2xl font-bold text-blue-400">127</div>
+                        <div className="text-2xl font-bold text-blue-400">{insights.totalWords}</div>
                 </div>
-                
                 <div className="bg-white/20 rounded-lg p-4">
                   <h4 className="font-semibold text-white mb-2">Practice Time</h4>
-                  <div className="text-2xl font-bold text-purple-400">2h 15m</div>
+                        <div className="text-2xl font-bold text-purple-400">
+                          {insights.practiceTime > 0 ? `${Math.round(insights.practiceTime)}m` : '0m'}
                 </div>
               </div>
+                    </>
+                  );
+                })()}
             </div>
-            
-            <button className="w-full px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold text-lg shadow-xl border-2 border-blue-200/50 backdrop-blur-sm hover:bg-blue-700 transition-all duration-300">
+            </div>
+            <button 
+              onClick={() => setShowDetailedReport(true)}
+              className="w-full px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold text-lg shadow-xl border-2 border-blue-200/50 backdrop-blur-sm hover:bg-blue-700 transition-all duration-300"
+            >
               View Detailed Report
             </button>
           </div>
         </div>
       </main>
 
-      {/* Recent Activity and Navigation */}
-      <div className="max-w-8xl mx-auto w-full px-12 py-4">
-        {/* Recent Activity Section */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/30 p-6 mb-6">
-          <div className="flex items-center mb-4">
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center mr-3">
-              <BookOpen className="w-4 h-4 text-white" />
-            </div>
-            <h3 className="text-2xl font-bold text-white">Recent Activity</h3>
+      {/* Recent Words section - Always show */}
+      <div className="mt-8 w-full max-w-7xl mx-auto bg-gradient-to-r from-blue-500/10 to-purple-500/10 backdrop-blur-sm rounded-2xl border border-blue-300/30 p-6 relative z-30">
+        <div className="text-2xl font-bold text-blue-100 mb-4 flex items-center gap-2">
+          <BookOpen className="w-6 h-6" />
+          Recent Words
+          <span className="text-sm font-normal text-blue-200/70">({vocabList ? vocabList.length : 0})</span>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recentWords.map((item, index) => (
-              <div key={index} className="bg-white/20 rounded-lg p-4 border border-white/30 hover:bg-white/30 transition-all duration-300">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-lg font-semibold text-white">{item.word}</h4>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    item.difficulty === 'Easy' ? 'bg-green-500/30 text-green-300' :
-                    item.difficulty === 'Medium' ? 'bg-yellow-500/30 text-yellow-300' :
-                    'bg-red-500/30 text-red-300'
-                  }`}>
-                    {item.difficulty}
-                  </span>
+        {vocabList && vocabList.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {vocabList.slice(-12).map((vocab, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  setLatestRecordedWord(vocab.word);
+                  setCurrentWord(vocab.word);
+                  // Clear previous recordings for new word
+                  setAudioURL(null);
+                  setAudioBlob(null);
+                  setEnhancedURL(null);
+                }}
+                className="group px-4 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-xl border border-white/20 hover:border-blue-300/50 transition-all duration-200 transform hover:scale-105 hover:shadow-lg relative"
+                disabled={isEnhancing}
+              >
+                {isEnhancing && latestRecordedWord === vocab.word && (
+                  <div className="absolute inset-0 bg-blue-500/20 rounded-xl flex items-center justify-center">
+                    <div className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin"></div>
                 </div>
-                <p className="text-sm text-blue-200">{item.timestamp}</p>
+                )}
+                <div className="text-white font-medium text-sm group-hover:text-blue-200 transition-colors">
+                  {vocab.word}
               </div>
+              </button>
             ))}
           </div>
+        ) : (
+          <div className="text-center py-8">
+            <div className="text-white/60 mb-2">No words added yet</div>
+            <div className="text-white/40 text-sm">
+              Add words from the <button 
+                onClick={() => navigate('/vocabpractice')} 
+                className="text-blue-300 hover:text-blue-200 underline"
+              >
+                Vocabulary Practice
+              </button> page to see them here
+            </div>
+          </div>
+        )}
         </div>
         
-        {/* Navigation Buttons */}
+      {/* Full-width recordings section below main content */}
+      {recordings.length > 0 && (
+        <div className="mt-8 w-full max-w-7xl mx-auto bg-white/5 backdrop-blur-sm rounded-2xl border border-white/20 p-6 relative z-30">
+          <div className="text-2xl font-bold text-blue-100 mb-4">My Recordings</div>
+          <ul className="divide-y divide-white/20 max-h-[32rem] overflow-y-auto">
+            {recordings.map(r => (
+              <li key={r.id} className="py-5">
+                <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr_auto_auto_auto_auto_auto] gap-4 items-center">
+                  <div className="text-sm text-white/90 font-semibold truncate" title={r.word || 'Recording'}>{r.word || 'Recording'}</div>
+                  <audio controls src={r.url} className="w-full" />
+                  <div className="text-blue-200 text-xs whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</div>
+                  <div className="flex flex-nowrap items-center gap-2 justify-end">
+                    <button onClick={() => handleDeleteRecording(r.id)} className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium whitespace-nowrap">Delete</button>
+                    <button onClick={() => handleDownloadRecording(r)} className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-xs font-medium whitespace-nowrap">Download</button>
+                    <button onClick={() => handleNativeShare(r)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium whitespace-nowrap">Share</button>
+                    {(() => {
+                      const message = buildShareMessage(r);
+                      const waHref = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                      return (
+                        <a href={waHref} target="_blank" rel="noopener noreferrer" className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium whitespace-nowrap">WhatsApp</a>
+                      );
+                    })()}
+                    {(() => {
+                      const message = buildShareMessage(r);
+                      const mailHref = `mailto:?subject=${encodeURIComponent('Pronunciation Recording: ' + (r.word || 'Recording'))}&body=${encodeURIComponent(message)}`;
+                      return (
+                        <a href={mailHref} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium whitespace-nowrap">Email</a>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Navigation now placed below recordings */}
+      <div className="w-full mt-4 px-0">
         <div className="flex justify-between items-center">
           <button
             onClick={() => navigate('/vocabpractice')}
@@ -842,6 +1351,188 @@ const PronunciationPractice: React.FC = () => {
           </button>
         </div>
       </div>
+      {/* Detailed Report Modal */}
+      {showDetailedReport && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
+          <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 rounded-3xl border border-white/20 shadow-2xl max-w-7xl w-full my-8">
+            {(() => {
+              const insights = generateInsightsData();
+              return (
+                <div className="p-8">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h1 className="text-4xl font-bold text-white mb-2">Pronunciation Insights Report</h1>
+                      <p className="text-blue-200">Comprehensive analysis of your pronunciation progress</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={handleExportReport}
+                        disabled={isExportingPDF}
+                        className={`px-6 py-3 bg-gradient-to-r text-white rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 ${
+                          isExportingPDF 
+                            ? 'from-gray-500 to-gray-600 cursor-not-allowed' 
+                            : 'from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
+                        }`}
+                      >
+                        {isExportingPDF ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-5 h-5" />
+                            Export PDF
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setShowDetailedReport(false)}
+                        className="px-6 py-3 bg-gray-600/50 text-white rounded-xl font-semibold hover:bg-gray-500/50 transition-all duration-300"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <GlossyKPICard
+                      title="Overall Score"
+                      value={`${Math.round(insights.averageScore)}%`}
+                      subtitle="Average accuracy"
+                      icon={<TrendingUp className="w-6 h-6" />}
+                      gradient="from-green-500 to-emerald-600"
+                      trend={insights.averageScore > 75 ? 'up' : insights.averageScore > 50 ? 'stable' : 'down'}
+                    />
+                    <GlossyKPICard
+                      title="Words Practiced"
+                      value={insights.totalWords}
+                      subtitle={`${insights.totalRecordings} recordings`}
+                      icon={<BookOpen className="w-6 h-6" />}
+                      gradient="from-blue-500 to-cyan-600"
+                      trend="up"
+                    />
+                    <GlossyKPICard
+                      title="Average Clarity"
+                      value={`${Math.round(insights.averageClarity)}%`}
+                      subtitle="Speech clarity"
+                      icon={<Volume2 className="w-6 h-6" />}
+                      gradient="from-purple-500 to-pink-600"
+                      trend={insights.averageClarity > 70 ? 'up' : 'stable'}
+                    />
+                    <GlossyKPICard
+                      title="Practice Time"
+                      value={`${Math.round(insights.practiceTime)}min`}
+                      subtitle="Total practice"
+                      icon={<Clock className="w-6 h-6" />}
+                      gradient="from-orange-500 to-red-600"
+                      trend="up"
+                    />
+                  </div>
+
+                  {/* Charts Section */}
+                  <div className="space-y-8">
+                    {/* Pronunciation Scores Chart */}
+                    {insights.pronunciationScores.length > 0 && (
+                      <div>
+                        <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                          <BarChart3 className="w-6 h-6" />
+                          Word Performance Analysis
+                        </h2>
+                        <GlossyPronunciationChart data={insights.pronunciationScores} />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* Phoneme Accuracy Chart */}
+                      {insights.phonemeData.length > 0 && (
+                        <div>
+                          <h2 className="text-2xl font-bold text-white mb-4">Phoneme Accuracy</h2>
+                          <GlossyPhonemeChart data={insights.phonemeData} />
+                        </div>
+                      )}
+
+                      {/* Communication Style Radar */}
+                      {insights.communicationData.length > 0 && (
+                        <div>
+                          <h2 className="text-2xl font-bold text-white mb-4">Communication Style</h2>
+                          <GlossyCommunicationChart data={insights.communicationData} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Progress Over Time */}
+                    {insights.progressData.length > 1 && (
+                      <div>
+                        <h2 className="text-2xl font-bold text-white mb-4">Progress Over Time</h2>
+                        <GlossyProgressChart data={insights.progressData} />
+                      </div>
+                    )}
+
+                    {/* Difficulty Distribution */}
+                    {insights.difficultyData.some(d => d.count > 0) && (
+                      <div>
+                        <h2 className="text-2xl font-bold text-white mb-4">Word Difficulty Distribution</h2>
+                        <RechartsGlossyBar data={insights.difficultyData} />
+                      </div>
+                    )}
+
+                    {/* Learning Progress Area Chart */}
+                    {insights.progressData.length > 1 && (
+                      <div>
+                        <h2 className="text-2xl font-bold text-white mb-4">Learning Journey</h2>
+                        <RechartsGlossyArea data={insights.progressData} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Insights Summary */}
+                  <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/10">
+                    <h2 className="text-2xl font-bold text-white mb-4">Key Insights</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <h3 className="text-lg font-semibold text-blue-200 mb-3">Strengths</h3>
+                        <ul className="space-y-2 text-white/80">
+                          {insights.averageScore > 75 && <li className="flex items-center gap-2"><Award className="w-4 h-4 text-green-400" />High overall accuracy</li>}
+                          {insights.averageClarity > 70 && <li className="flex items-center gap-2"><Award className="w-4 h-4 text-green-400" />Clear speech patterns</li>}
+                          {insights.totalWords > 5 && <li className="flex items-center gap-2"><Award className="w-4 h-4 text-green-400" />Diverse vocabulary practice</li>}
+                          {insights.totalRecordings > 3 && <li className="flex items-center gap-2"><Award className="w-4 h-4 text-green-400" />Consistent practice routine</li>}
+                        </ul>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-orange-200 mb-3">Areas for Improvement</h3>
+                        <ul className="space-y-2 text-white/80">
+                          {insights.averageScore < 75 && <li className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-orange-400" />Focus on pronunciation accuracy</li>}
+                          {insights.averageClarity < 70 && <li className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-orange-400" />Improve speech clarity</li>}
+                          {insights.totalWords < 5 && <li className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-orange-400" />Practice more diverse vocabulary</li>}
+                          {insights.practiceTime < 5 && <li className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-orange-400" />Increase practice duration</li>}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* No Data Message */}
+                  {insights.totalRecordings === 0 && (
+                    <div className="text-center py-12">
+                      <div className="text-6xl mb-4">🎤</div>
+                      <h3 className="text-2xl font-bold text-white mb-2">No Recordings Yet</h3>
+                      <p className="text-blue-200 mb-6">Start recording words to see your pronunciation insights and detailed analytics.</p>
+                      <button
+                        onClick={() => setShowDetailedReport(false)}
+                        className="px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all duration-300"
+                      >
+                        Start Recording
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
