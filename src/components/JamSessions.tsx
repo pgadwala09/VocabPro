@@ -1,8 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Mic, StopCircle, X, Brain, Sparkles, Volume2, BookOpen, MessageSquare, Music, Clock, FileText, BarChart3, Plus } from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  ArcElement,
+  Title as ChartTitle,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Bar, Line, Pie } from 'react-chartjs-2';
+// import { useNavigate } from 'react-router-dom';
+import { Mic, StopCircle, Brain, Sparkles, FileText, BarChart3, Plus } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
-import { useVocabulary } from '../hooks/VocabularyContext';
+import { supabase } from '../lib/supabase';
+import { firecrawlSearch, firecrawlScrape } from '../lib/firecrawl';
+import { serpSearch } from '../lib/serp';
+import { wikiBestArticle } from '../lib/wikipedia';
+// import { generateElevenLabsSpeech, speakWithBrowser } from '../lib/tts';
+import { generateStructuredNotes, transcribeAudioWhisper } from '../lib/insights';
 
 // Custom CSS for enhanced talking animations
 const talkingStyles = `
@@ -45,38 +63,196 @@ const talkingStyles = `
 `;
 
 const JamSessions: React.FC = () => {
+  // Register Chart.js once
+  useEffect(() => {
+    try {
+      ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, ChartTitle, Tooltip, Legend);
+    } catch {}
+  }, []);
   const [activeTab, setActiveTab] = useState('create');
   const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentWord, setCurrentWord] = useState('JAM Session');
+  // const [currentWord] = useState('JAM Session');
   const [audioURL, setAudioURL] = useState<string | null>(null);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const [recordingWaveform, setRecordingWaveform] = useState<number[]>([]);
-  const [originalWaveform, setOriginalWaveform] = useState<number[]>([]);
-  const [latestRecordedWord, setLatestRecordedWord] = useState<string>('JAM Session');
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   // Content creation state
   const [createdContent, setCreatedContent] = useState<any>(null);
+  const [topicTitle, setTopicTitle] = useState<string>('');
   const [summary, setSummary] = useState('');
   const [ageGroup, setAgeGroup] = useState('');
   const [proficiencyLevel, setProficiencyLevel] = useState('');
   const [curriculum, setCurriculum] = useState('');
-  const [recordedText, setRecordedText] = useState<string>('');
+  const [recordedText, setRecordedText] = useState<string>(''); // used to compute insights
+  const [speakingParas] = useState<string>('');
 
   // Recording Studio state
   const [selectedCharacter, setSelectedCharacter] = useState('superhero1');
   const [selectedTimer, setSelectedTimer] = useState('2');
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [timerActive, setTimerActive] = useState(false);
+  const [, setParticipants] = useState<number>(1);
+  const [sharedNotes, setSharedNotes] = useState<string>('');
+  const channelRef = useRef<any>(null);
+  const [roomId] = useState<string>(() => new URLSearchParams(window.location.search).get('room') || 'default');
+  const lastTimerRef = useRef<{ durationSeconds: number; startedAt: number } | null>(null);
+  const timerActiveRef = useRef<boolean>(false);
+  // Removed audio summary UI in Insights; keep placeholders unused
+  // const [summaryAudioUrl, setSummaryAudioUrl] = useState<string | null>(null);
+  // const [isSummarizing, setIsSummarizing] = useState(false);
+  const [recordings, setRecordings] = useState<Array<{ id: string; url: string; title: string; createdAt: Date; transcript?: string; blob?: Blob }>>([]);
+  const [recordingInsights, setRecordingInsights] = useState<Record<string, { words: number; durationSec: number; wpm: number; avgPitchHz: number; pitchLevel: 'Low'|'Medium'|'High'|'Unknown'; style: 'Informative'|'Persuasive'|'Narrative'|'Descriptive'|'Unknown'; pronunciation: 'Clear'|'Average'|'Needs practice'|'Unknown' }>>({});
+  const [contentNotes, setContentNotes] = useState<string>('');
+  const [isBionicMode, setIsBionicMode] = useState<boolean>(true);
+  const [contentHistory, setContentHistory] = useState<Array<{ id: string; title: string; content: string; notes?: string; createdAt: Date }>>([]);
+  
+  const [isWebSearching, setIsWebSearching] = useState<boolean>(false);
+  const [insightsModalOpen, setInsightsModalOpen] = useState<boolean>(false);
+  const [insightsModalRecId, setInsightsModalRecId] = useState<string | null>(null);
+
+  // Persist Create Content filters for a brief period, independent of Bionic Reading toggle
+  const FILTERS_KEY = 'jam_filters_v1';
+  const FILTERS_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.savedAt) return;
+      const isFresh = Date.now() - parsed.savedAt < FILTERS_TTL_MS;
+      if (!isFresh) {
+        localStorage.removeItem(FILTERS_KEY);
+        return;
+      }
+      if (parsed.summary) setSummary(parsed.summary);
+      if (parsed.ageGroup) setAgeGroup(parsed.ageGroup);
+      if (parsed.proficiencyLevel) setProficiencyLevel(parsed.proficiencyLevel);
+      if (parsed.curriculum) setCurriculum(parsed.curriculum);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const data = {
+        summary,
+        ageGroup,
+        proficiencyLevel,
+        curriculum,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(data));
+    } catch {}
+  }, [summary, ageGroup, proficiencyLevel, curriculum]);
+
+  const handleClearFilters = () => {
+    setSummary('');
+    setAgeGroup('');
+    setProficiencyLevel('');
+    setCurriculum('');
+    try { localStorage.removeItem(FILTERS_KEY); } catch {}
+  };
+
+  const addToContentHistory = (title: string, content: string, notes?: string) => {
+    setContentHistory(prev => [
+      { id: Date.now().toString(), title, content, notes, createdAt: new Date() },
+      ...prev
+    ]);
+  };
+
+  const handleSaveNotes = () => {
+    const title = createdContent?.title || (summary ? `Notes: ${summary}` : 'My Notes');
+    const content = createdContent?.content || '';
+    addToContentHistory(title, content, contentNotes);
+    alert('Saved to Recent Activity');
+  };
+
+  // When AI content becomes available, enable Bionic Reading by default
+  useEffect(() => {
+    if (createdContent && createdContent.content) {
+      setIsBionicMode(true);
+    }
+  }, [createdContent]);
+
+  // Helper to render text with Bionic Reading style (bold first 40% of each word)
+  const renderBionicText = (text: string) => {
+    const tokens = text.split(/(\s+)/);
+    return (
+      <>
+        {tokens.map((token, idx) => {
+          if (/^\s+$/.test(token)) return <span key={idx}>{token}</span>;
+          const match = token.match(/^([A-Za-zÀ-ÖØ-öø-ÿ0-9]+)(.*)$/);
+          if (!match) return <span key={idx}>{token}</span>;
+          const word = match[1];
+          const rest = match[2] || '';
+          const boldLen = Math.max(1, Math.floor(word.length * 0.4));
+          return (
+            <span key={idx}>
+              <span className="font-semibold">{word.slice(0, boldLen)}</span>
+              {word.slice(boldLen)}
+              {rest}
+            </span>
+          );
+        })}
+      </>
+    );
+  };
+
+  // Build structured content based on filters with sections: Introduction, Beginner, Middle, Conclusion
+  const buildStructuredContent = (
+    topic: string,
+    options: { ageGroup?: string; proficiencyLevel?: string; curriculum?: string; baseContent?: string }
+  ): string => {
+    const { baseContent } = options || {};
+
+    const intro = `What is ${topic}? In this section, you’ll get a quick, clear picture of the idea, why it matters, and where you might see it in real life. Think of this as your friendly on‑ramp before we dive deeper.`;
+
+    const beginner = `
+• What it is: ${topic} explained with simple words and an everyday example.
+• Try it: Do 1 tiny activity to notice ${topic} around you.
+• Words to know: 3–5 helpful terms connected to ${topic}.`;
+
+    const cleaned = (baseContent || '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^#+\s+/gm, '') // drop markdown headings
+      .trim();
+    const middle = cleaned && cleaned.length > 0
+      ? cleaned
+      : `Let’s explore ${topic} step by step with key points, a short story or use‑case, and one quick practice question.`;
+
+    const conclusion = `
+• Key takeaways: 2–3 points you should remember about ${topic}.
+• Reflection: 1 quick question to check your understanding.
+• Next step: A tiny challenge to apply ${topic} today.`;
+
+    return [
+      `Introduction\n\n${intro}`,
+      `Beginner\n\n${beginner}`,
+      `Middle\n\n${middle}`,
+      `Conclusion\n\n${conclusion}`
+    ].join('\n\n');
+  };
+
+  // Convert basic HTML to plain text when markdown scrape is missing/short
+  const htmlToPlainText = (html: string) => {
+    try {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      const text = (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
+      return text;
+    } catch {
+      return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+  };
+
+  // Preset content feature removed
 
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const { vocabList } = useVocabulary();
+  // const navigate = useNavigate();
 
   // Character options with icons
   const characterOptions = [
@@ -173,7 +349,68 @@ const JamSessions: React.FC = () => {
 
   // Cleanup effect
   useEffect(() => {
+    // Setup Supabase Realtime channel for this JAM room
+    const presenceKey = (user?.id as string) || Math.random().toString(36).slice(2);
+    const channel = supabase.channel(`jam_session:${roomId}`, {
+      config: { presence: { key: presenceKey } }
+    });
+
+    // Presence: track participant count
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      let count = 0;
+      Object.values(state).forEach((arr: any) => { count += Array.isArray(arr) ? arr.length : 0; });
+      setParticipants(Math.max(1, count));
+    });
+
+    // Receive timer start from others
+    channel.on('broadcast', { event: 'timer_start' }, ({ payload }) => {
+      try {
+        const { durationSeconds, startedAt } = payload || {};
+        if (!durationSeconds || !startedAt) return;
+        lastTimerRef.current = { durationSeconds, startedAt };
+        const now = Math.floor(Date.now() / 1000);
+        const elapsed = now - Math.floor(startedAt / 1000);
+        const remaining = Math.max(0, durationSeconds - Math.max(0, elapsed));
+        if (remaining > 0) {
+          setSelectedTimer(String(Math.ceil(durationSeconds / 60)));
+          startCountdown(remaining);
+        }
+      } catch {}
+    });
+
+    // Receive timer stop
+    channel.on('broadcast', { event: 'timer_stop' }, () => {
+      setTimerActive(false);
+      setTimeRemaining(0);
+      lastTimerRef.current = null;
+    });
+
+    // Receive shared notes updates
+    channel.on('broadcast', { event: 'notes_update' }, ({ payload }) => {
+      if (typeof payload?.text === 'string') setSharedNotes(payload.text);
+    });
+
+    // Late joiners request current state
+    channel.on('broadcast', { event: 'state_request' }, () => {
+      const state = lastTimerRef.current;
+      if (state && timerActiveRef.current) {
+        channel.send({ type: 'broadcast', event: 'timer_start', payload: state });
+      }
+    });
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.track({ online_at: Date.now() });
+        // Ask others for current state if any
+        channel.send({ type: 'broadcast', event: 'state_request', payload: {} });
+      }
+    });
+
+    channelRef.current = channel;
+
     return () => {
+      try { if (channel) supabase.removeChannel(channel); } catch {}
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -216,6 +453,26 @@ const JamSessions: React.FC = () => {
     updateWaveform();
   };
 
+  // Helper: start a local countdown without starting recording
+  const startCountdown = (seconds: number) => {
+    setTimeRemaining(seconds);
+    setTimerActive(true);
+    const intervalId = window.setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalId);
+          setTimerActive(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    timerActiveRef.current = timerActive;
+  }, [timerActive]);
+
   const stopWaveformAnalysis = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -224,9 +481,153 @@ const JamSessions: React.FC = () => {
     setRecordingWaveform([]);
   };
 
+  // Estimate average pitch (very rough) using time-domain autocorrelation on decoded audio buffer
+  const estimateAveragePitchHz = async (input: string | Blob): Promise<{ avgHz: number; durationSec: number }> => {
+    try {
+      let arrayBuffer: ArrayBuffer;
+      if (typeof input === 'string') {
+        const res = await fetch(input);
+        arrayBuffer = await res.arrayBuffer();
+      } else {
+        arrayBuffer = await input.arrayBuffer();
+      }
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      let buffer: AudioBuffer | null = null;
+      try {
+        buffer = await ctx.decodeAudioData(arrayBuffer);
+      } catch {
+        buffer = null;
+      }
+      let avgHz = 0;
+      let durationSec = 0;
+      if (buffer) {
+        const channel = buffer.getChannelData(0);
+        const sampleRate = buffer.sampleRate;
+        const frameSize = 2048;
+        const hop = 1024;
+        const minLag = Math.floor(sampleRate / 400); // 400 Hz
+        const maxLag = Math.floor(sampleRate / 50);  // 50 Hz
+        const freqs: number[] = [];
+        for (let start = 0; start + frameSize < channel.length; start += hop) {
+          let bestLag = 0;
+          let bestCorr = 0;
+          for (let lag = minLag; lag <= maxLag; lag++) {
+            let corr = 0;
+            for (let i = 0; i < frameSize - lag; i++) {
+              corr += channel[start + i] * channel[start + i + lag];
+            }
+            if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
+          }
+          if (bestLag > 0 && bestCorr > 0.01) {
+            freqs.push(sampleRate / bestLag);
+          }
+        }
+        avgHz = freqs.length ? freqs.reduce((a, b) => a + b, 0) / freqs.length : 0;
+        durationSec = buffer.duration;
+      }
+      try { ctx.close(); } catch {}
+      // Fallback duration via HTMLAudioElement if decode failed
+      if (!durationSec || !isFinite(durationSec)) {
+        try {
+          const a = document.createElement('audio');
+          if (typeof input === 'string') a.src = input; else a.src = URL.createObjectURL(new Blob([arrayBuffer], { type: 'audio/webm' }));
+          await new Promise<void>((resolve) => {
+            a.onloadedmetadata = () => resolve();
+            a.onerror = () => resolve();
+          });
+          if (a.duration && isFinite(a.duration)) durationSec = a.duration;
+        } catch {}
+      }
+      return { avgHz, durationSec };
+    } catch {
+      return { avgHz: 0, durationSec: 0 };
+    }
+  };
+
+  const classifyPitchLevel = (hz: number): 'Low'|'Medium'|'High'|'Unknown' => {
+    if (!hz || !isFinite(hz)) return 'Unknown';
+    if (hz < 140) return 'Low';
+    if (hz < 220) return 'Medium';
+    return 'High';
+  };
+
+  const classifyCommunicationStyle = (text?: string): 'Informative'|'Persuasive'|'Narrative'|'Descriptive'|'Unknown' => {
+    if (!text) return 'Unknown';
+    const t = text.toLowerCase();
+    if (/i (believe|think|should|must)|convinc|argu|therefore|hence/.test(t)) return 'Persuasive';
+    if (/(once|story|then|after|before|suddenly|finally)/.test(t)) return 'Narrative';
+    if (/(imagine|looks like|sounds like|feels like|color|shape|texture)/.test(t)) return 'Descriptive';
+    return 'Informative';
+  };
+
+  const estimatePronunciation = (text?: string): 'Clear'|'Average'|'Needs practice'|'Unknown' => {
+    if (!text) return 'Unknown';
+    const words = text.trim().split(/\s+/);
+    const filler = (text.match(/\b(um|uh|like|you know|er)\b/gi) || []).length;
+    const longWords = words.filter(w => w.length >= 8).length;
+    const ratio = filler / Math.max(1, words.length);
+    if (ratio < 0.01 && longWords / Math.max(1, words.length) > 0.08) return 'Clear';
+    if (ratio < 0.03) return 'Average';
+    return 'Needs practice';
+  };
+
+  const computeInsightsForRecording = async (rec: { id: string; url: string; transcript?: string; blob?: Blob }) => {
+    const { avgHz, durationSec } = await estimateAveragePitchHz(rec.blob || rec.url);
+    const words = (rec.transcript || '').trim().split(/\s+/).filter(Boolean).length;
+    let minutes = durationSec > 0 ? durationSec / 60 : 0;
+    if (!minutes || !isFinite(minutes)) minutes = 1 / 60; // prevent zero; assume 1s minimal
+    const wpm = Math.round(words / minutes);
+    const style = classifyCommunicationStyle(rec.transcript);
+    const pronunciation = estimatePronunciation(rec.transcript);
+    setRecordingInsights(prev => ({
+      ...prev,
+      [rec.id]: {
+        words,
+        durationSec: Math.round(durationSec),
+        wpm,
+        avgPitchHz: Math.round(avgHz),
+        pitchLevel: classifyPitchLevel(avgHz),
+        style,
+        pronunciation,
+      }
+    }));
+  };
+
+  const buildFeedbackFromMetrics = (m?: { words: number; wpm: number; pitchLevel: 'Low'|'Medium'|'High'|'Unknown'; style: string; pronunciation: string }) => {
+    if (!m) return 'No feedback available yet. Record something to see detailed feedback.';
+    const tips: string[] = [];
+    if (m.wpm > 170) tips.push('Slow down a little for clarity (aim 120–160 wpm).');
+    if (m.wpm < 110) tips.push('Increase pace slightly to keep energy (aim 120–160 wpm).');
+    if (m.pitchLevel === 'Low') tips.push('Vary pitch upwards to add enthusiasm.');
+    if (m.pitchLevel === 'High') tips.push('Calm the pitch a bit for confidence.');
+    if (m.pronunciation === 'Needs practice') tips.push('Open vowels and articulate endings; practice tricky words slowly.');
+    if (tips.length === 0) tips.push('Great balance of pace and tone. Keep it up!');
+    return `Style: ${m.style}. Pronunciation: ${m.pronunciation}. ${tips.join(' ')}`;
+  };
+
+  const buildAggregateFeedback = () => {
+    const vals = recordings.map(r => recordingInsights[r.id]).filter(Boolean) as any[];
+    if (!vals.length) return 'No recordings yet. Record a clip to see your feedback report.';
+    const avgWpm = Math.round(vals.reduce((a, v) => a + (v.wpm || 0), 0) / vals.length);
+    const avgPitch = Math.round(vals.reduce((a, v) => a + (v.avgPitchHz || 0), 0) / vals.length);
+    const styleCounts: Record<string, number> = {};
+    vals.forEach(v => { styleCounts[v.style] = (styleCounts[v.style] || 0) + 1; });
+    const topStyle = Object.entries(styleCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || 'Unknown';
+    const pronCounts: Record<string, number> = {};
+    vals.forEach(v => { pronCounts[v.pronunciation] = (pronCounts[v.pronunciation] || 0) + 1; });
+    const mostPron = Object.entries(pronCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || 'Unknown';
+    const tips: string[] = [];
+    if (avgWpm > 170) tips.push('Reduce pace slightly (target 120–160 wpm).');
+    if (avgWpm < 110) tips.push('Increase pace for energy (target 120–160 wpm).');
+    if (avgPitch < 140) tips.push('Lift pitch occasionally to sound more engaging.');
+    if (avgPitch > 220) tips.push('Lower pitch slightly to convey confidence.');
+    if (mostPron === 'Needs practice') tips.push('Practice articulation with tongue twisters and slow repetition.');
+    if (tips.length === 0) tips.push('Great overall balance. Keep practicing consistently!');
+    return `Average WPM: ${avgWpm}. Average Pitch: ${avgPitch} Hz. Predominant style: ${topStyle}. Pronunciation trend: ${mostPron}. ${tips.join(' ')}`;
+  };
+
   const handleStartRecording = async () => {
     setAudioURL(null);
-    setAudioBlob(null);
     setRecordedText('');
     audioChunks.current = [];
     setRecordingWaveform([]);
@@ -237,6 +638,10 @@ const JamSessions: React.FC = () => {
     setTimeRemaining(selectedTimeInSeconds);
     setTimerActive(true);
     
+    // Broadcast timer start to the room and start local countdown
+    const startedAt = Date.now();
+    lastTimerRef.current = { durationSeconds: selectedTimeInSeconds, startedAt };
+    channelRef.current?.send({ type: 'broadcast', event: 'timer_start', payload: { durationSeconds: selectedTimeInSeconds, startedAt } });
     // Timer countdown
     const timerInterval = setInterval(() => {
       setTimeRemaining((prev) => {
@@ -264,26 +669,33 @@ const JamSessions: React.FC = () => {
       };
       mediaRecorder.onstop = () => {
         const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        setAudioURL(URL.createObjectURL(blob));
-        setLatestRecordedWord(currentWord);
+        const url = URL.createObjectURL(blob);
+        setAudioURL(url);
         stream.getTracks().forEach(track => track.stop());
         stopWaveformAnalysis();
         setTimerActive(false);
         clearInterval(timerInterval);
+        // save into recent recordings list
+        const id = Date.now().toString();
+        const rec = { id, url, title: topicTitle || 'JAM Session', createdAt: new Date(), transcript: '', blob };
+        setRecordings(prev => [ rec, ...prev ]);
         
-        // Generate transcription after audio is processed
-        setTimeout(() => {
-          const sampleTranscriptions = [
-            "Hello everyone, today I want to talk about the importance of environmental conservation and how we can all contribute to making our planet a better place for future generations.",
-            "In my opinion, technology has revolutionized the way we learn and communicate. It has opened up new opportunities for education and collaboration across the globe.",
-            "I believe that mental health awareness is crucial in today's fast-paced world. We need to prioritize our well-being and support those around us who may be struggling.",
-            "The future of renewable energy looks promising. Solar and wind power are becoming more efficient and affordable, offering sustainable alternatives to fossil fuels.",
-            "Education is the key to unlocking human potential. It empowers individuals to think critically, solve problems, and contribute meaningfully to society."
-          ];
-          const randomTranscription = sampleTranscriptions[Math.floor(Math.random() * sampleTranscriptions.length)];
-          setRecordedText(randomTranscription);
-        }, 500);
+        // Transcribe using Whisper (via OpenAI API or configured proxy)
+        setTimeout(async () => {
+          try {
+            const text = await transcribeAudioWhisper(blob);
+            const transcript = text || '';
+            setRecordedText(transcript);
+            setRecordings(prev => prev.map(r => r.id === id ? { ...r, transcript } : r));
+            computeInsightsForRecording({ id, url, transcript, blob });
+          } catch {
+            // Fallback to minimal placeholder if transcription fails
+            const transcript = 'Recording captured. Enable VITE_OPENAI_API_KEY to transcribe with Whisper.';
+            setRecordedText(transcript);
+            setRecordings(prev => prev.map(r => r.id === id ? { ...r, transcript } : r));
+            computeInsightsForRecording({ id, url, transcript, blob });
+          }
+        }, 300);
       };
       mediaRecorder.start();
       setIsRecording(true);
@@ -301,103 +713,270 @@ const JamSessions: React.FC = () => {
       setIsRecording(false);
       stopWaveformAnalysis();
     }
+    // Broadcast timer stop to the room
+    channelRef.current?.send({ type: 'broadcast', event: 'timer_stop', payload: {} });
+  };
+
+  // Helpers for sharing and downloading recordings
+  const buildShareMessage = (rec: { title: string; createdAt: Date }) => {
+    const dateStr = rec.createdAt.toLocaleString();
+    return `Sharing my JAM session recording: "${rec.title}" (recorded on ${dateStr}).`;
+  };
+
+  const sanitizeFileName = (name: string) => name.replace(/[^a-z0-9\-_. ]/gi, '').replace(/\s+/g, '-');
+
+  const handleDownloadRecording = (rec: { url: string; title: string; id: string }) => {
+    try {
+      const a = document.createElement('a');
+      a.href = rec.url;
+      a.download = `${sanitizeFileName(rec.title)}-${rec.id}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {}
+  };
+
+  const handleNativeShare = async (rec: { url: string; title: string; createdAt: Date }) => {
+    try {
+      // @ts-ignore - navigator.share files may not be in TS lib
+      if (navigator && navigator.share) {
+        const blob = await fetch(rec.url).then(r => r.blob());
+        const file = new File([blob], `${sanitizeFileName(rec.title)}.webm`, { type: 'audio/webm' });
+        // @ts-ignore
+        await navigator.share({
+          title: rec.title,
+          text: buildShareMessage(rec),
+          files: [file]
+        });
+      } else {
+        alert('Native sharing is not supported on this device. Use WhatsApp or Email buttons.');
+      }
+    } catch {}
   };
 
   const handleClearRecording = () => {
     setAudioURL(null);
-    setAudioBlob(null);
     setIsRecording(false);
-    setIsPlaying(false);
     setRecordingWaveform([]);
     setRecordedText('');
     stopWaveformAnalysis();
   };
 
-  const handleCreateContent = async () => {
-    if (!summary || !ageGroup || !proficiencyLevel || !curriculum) {
-      alert('Please fill in all fields');
+  // Removed Create Content flow as per request; we now focus only on Search the Web
+
+  
+
+  const handleSearchWeb = async () => {
+    const query = (topicTitle || summary || '').trim();
+    if (!query) {
       return;
     }
+    // Keep UI title in sync with the search query
+    setTopicTitle(query);
+    const hasFirecrawl = Boolean((import.meta as any).env.VITE_FIRECRAWL_API_KEY);
+    const hasSerp = Boolean((import.meta as any).env.VITE_SERPAPI_KEY);
+    if (!hasFirecrawl && !hasSerp) {
+      // No web search providers configured; gracefully fall back to Wikipedia
+      try {
+        const article = await wikiBestArticle(query);
+        if (article) {
+          const markdown = `# ${article.title}\n\n${article.extract}\n\nSource: ${article.url}`;
+          const structuredWiki = buildStructuredContent(article.title, { ageGroup, proficiencyLevel, curriculum, baseContent: markdown });
+        setCreatedContent({
+            content: structuredWiki,
+            title: article.title,
+          createdAt: new Date().toLocaleString(),
+            status: 'Wikipedia',
+          isLoading: false
+        });
+          setTopicTitle(article.title);
+          setContentHistory(prev => [{ id: `${Date.now()}-wiki-nokeys`, title: article.title, content: structuredWiki, createdAt: new Date() }, ...prev]);
+      } else {
+          // No keys and no Wikipedia result; do nothing visible
+        }
+      } catch {
+        // Silent failure in no-key path
+      }
+      return;
+    }
+    setIsWebSearching(true);
+    try {
+      let scraped: Array<{ title: string; markdown: string }> = [];
 
-    // Show loading state
-    setCreatedContent({
-      title: summary,
-      ageGroup: ageGroup,
-      proficiencyLevel: proficiencyLevel,
-      curriculum: curriculum,
-      createdAt: new Date().toLocaleString(),
-      status: 'Generating...',
-      isLoading: true
-    });
+      // First try Firecrawl search + scrape
+      try {
+        const hits = await firecrawlSearch({ q: query, limit: 3 });
+        for (const h of hits) {
+          if (!h.url) continue;
+          const page = await firecrawlScrape({ url: h.url, formats: ['markdown', 'html'] });
+          const mk = page?.markdown && page.markdown.trim().length > 120 ? page.markdown : '';
+          const fallback = !mk && page?.html ? htmlToPlainText(page.html) : '';
+          const body = mk || fallback;
+          if (body) {
+            scraped.push({ title: h.title || h.url, markdown: body });
+          }
+        }
+      } catch (e) {
+        console.warn('Firecrawl search failed', e);
+      }
 
-    // Simulate content generation
-    setTimeout(() => {
-      const generatedContent = {
-        content: `I'd be happy to explain "${summary}" using a simple analogy that young learners can understand!
+      // Fallback to SerpAPI if nothing was scraped
+      let serpLinks: Array<{ title: string; link: string }> = [];
+      if (scraped.length === 0) {
+        try {
+          const serp = await serpSearch({ q: query, num: 3, hl: 'en', gl: 'us' });
+          serpLinks = serp.map(r => ({ title: r.title, link: r.link })).filter(r => !!r.link);
+          for (const r of serp) {
+            if (!r.link) continue;
+            const page = await firecrawlScrape({ url: r.link, formats: ['markdown', 'html'] });
+            const mk = page?.markdown && page.markdown.trim().length > 120 ? page.markdown : '';
+            const fallback = !mk && page?.html ? htmlToPlainText(page.html) : '';
+            const body = mk || fallback;
+            if (body) {
+              scraped.push({ title: r.title || r.link, markdown: body });
+            }
+          }
+        } catch (e) {
+          console.warn('SerpAPI fallback failed', e);
+        }
+      }
 
-Imagine you're at a birthday party with lots of delicious cupcakes. The cupcakes represent the main idea of ${summary}, and the party guests are like different ways to understand it. 
-
-Here's how ${summary} works in simple terms:
-
-• **What is it?** ${summary} is like a special tool or concept that helps us understand something important in our world.
-
-• **Why does it matter?** Just like how knowing how to read helps us understand stories, understanding ${summary} helps us make sense of things around us.
-
-• **Real-world example:** Think about how ${summary} might be like learning to ride a bicycle - at first it seems complicated, but once you understand the basics, it becomes natural and fun!
-
-• **Fun fact:** Did you know that ${summary} is connected to many things you see every day? It's like a hidden puzzle piece that makes everything work better.
-
-**Discussion ideas for your JAM session:**
-1. "What would the world be like without ${summary}?"
-2. "How does ${summary} make our lives easier?"
-3. "Can you think of three examples of ${summary} in your daily life?"
-4. "What questions do you have about ${summary}?"
-
-**Activities to try:**
-• Draw a picture showing ${summary} in action
-• Create a simple story about a character learning about ${summary}
-• Play a guessing game where you describe ${summary} without saying its name
-• Make a mini-presentation explaining ${summary} to your friends
-
-Remember, the best way to understand ${summary} is to explore it with curiosity and imagination! What aspect of ${summary} interests you the most?`,
-        webSources: [
-          'Educational Research Database',
-          'Academic Journals',
-          'International Education Resources',
-          'Curriculum Development Centers',
-          'Peer-reviewed Publications',
-          'Expert Analysis Reports'
-        ],
-        keywords: [summary.toLowerCase(), ageGroup, proficiencyLevel, curriculum, 'education', 'learning', 'interactive', 'analogy', 'explanation']
-      };
-      
-      setCreatedContent({
-        ...generatedContent,
-        title: summary,
-        ageGroup: ageGroup,
-        proficiencyLevel: proficiencyLevel,
-        curriculum: curriculum,
-        createdAt: new Date().toLocaleString(),
-        status: 'Generated',
-        isLoading: false
-      });
-    }, 2000);
-
-    // Clear form
-    setSummary('');
-    setAgeGroup('');
-    setProficiencyLevel('');
-    setCurriculum('');
+      if (scraped.length > 0) {
+        // Show first scraped page in Content Notes
+        let structuredFirst = buildStructuredContent(scraped[0].title, { ageGroup, proficiencyLevel, curriculum, baseContent: scraped[0].markdown });
+        // Enhance with creative rewrite if OpenAI key available
+        try {
+          const ai = await generateStructuredNotes(scraped[0].title, scraped[0].markdown, ageGroup, proficiencyLevel, curriculum);
+          if (ai) structuredFirst = ai;
+        } catch {}
+        setCreatedContent({
+          content: structuredFirst,
+          title: scraped[0].title,
+          createdAt: new Date().toLocaleString(),
+          status: 'Web',
+          isLoading: false
+        });
+        setTopicTitle(scraped[0].title);
+        // Add all scraped pages to Recent Activity
+        const enriched = [] as Array<{ id: string; title: string; content: string; createdAt: Date }>;
+        for (const s of scraped) {
+          let c = buildStructuredContent(s.title, { ageGroup, proficiencyLevel, curriculum, baseContent: s.markdown });
+          try {
+            const ai = await generateStructuredNotes(s.title, s.markdown, ageGroup, proficiencyLevel, curriculum);
+            if (ai) c = ai;
+          } catch {}
+          enriched.push({ id: `${Date.now()}-${Math.random()}`, title: s.title, content: c, createdAt: new Date() });
+        }
+        setContentHistory(prev => [ ...enriched, ...prev ]);
+      } else {
+        // If we couldn't scrape, still add the links to Recent Activity as plain text
+        if (serpLinks.length > 0) {
+          const asText = serpLinks.map(l => `- ${l.title || l.link}: ${l.link}`).join('\n');
+          let structuredLinks = buildStructuredContent(query, { ageGroup, proficiencyLevel, curriculum, baseContent: `Web links for ${query}:\n\n${asText}` });
+          try {
+            const ai = await generateStructuredNotes(query, asText, ageGroup, proficiencyLevel, curriculum);
+            if (ai) structuredLinks = ai;
+          } catch {}
+          setCreatedContent({
+            content: structuredLinks,
+            title: `Web results for "${query}"` ,
+            createdAt: new Date().toLocaleString(),
+            status: 'Web Links',
+            isLoading: false
+          });
+          setTopicTitle(`Web results for "${query}"`);
+          setContentHistory(prev => [{ id: `${Date.now()}-links`, title: `Web results for "${query}"`, content: structuredLinks, createdAt: new Date() }, ...prev]);
+        } else {
+          // Final fallback: Wikipedia summary (no API key needed)
+          try {
+            const article = await wikiBestArticle(query);
+            if (article) {
+              const markdown = `# ${article.title}\n\n${article.extract}\n\nSource: ${article.url}`;
+              const structuredWiki = buildStructuredContent(article.title, { ageGroup, proficiencyLevel, curriculum, baseContent: markdown });
+              setCreatedContent({
+                content: structuredWiki,
+                title: article.title,
+                createdAt: new Date().toLocaleString(),
+                status: 'Wikipedia',
+                isLoading: false
+              });
+              setTopicTitle(article.title);
+              setContentHistory(prev => [{ id: `${Date.now()}-wiki-fallback`, title: article.title, content: structuredWiki, createdAt: new Date() }, ...prev]);
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn('Web search failed', e);
+    } finally {
+      setIsWebSearching(false);
+    }
   };
 
+  // Removed Add from Wikipedia/Britannica flows as per request
+
   const renderCreateContentTab = () => (
-    <div className="w-full max-w-4xl mx-auto space-y-8">
+    <div className="w-full max-w-7xl mx-auto space-y-8">
       <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
         <h2 className="text-3xl font-bold text-white mb-6 text-center">Create Content</h2>
         
-        <div className="space-y-6">
-          {/* Content Creation Form */}
-          <div className="bg-white/10 rounded-lg p-6 border border-white/20">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+          {/* Content Notes - dedicated notes box (left column) */}
+          <div className="bg-white/10 rounded-lg p-6 border border-white/20 order-2 lg:order-2 lg:col-span-1 lg:h-[36rem] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xl font-bold text-white">Content Notes</h3>
+              <div className={`flex items-center gap-2 ${createdContent ? '' : ''}`}>
+                <span className="text-sm text-gray-300">Bionic Reading</span>
+                <button
+                  onClick={() => setIsBionicMode((v) => !v)}
+                  className={`w-12 h-6 rounded-full relative transition-colors ${isBionicMode ? 'bg-indigo-600' : 'bg-gray-600'}`}
+                >
+                  <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${isBionicMode ? 'translate-x-6' : ''}`}></span>
+                </button>
+              </div>
+            </div>
+
+            {/* If Bionic mode is ON and content exists, show AI content; otherwise show notes textarea or loading */}
+            {isBionicMode && createdContent && typeof createdContent.content === 'string' && createdContent.content.length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-br from-purple-900/50 to-blue-900/50 rounded-lg p-4 border border-purple-500/30">
+                  <h4 className="font-semibold text-white mb-3">{createdContent.title || 'Generated Content'}</h4>
+                  <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
+                    {renderBionicText(createdContent.content)}
+                  </div>
+                </div>
+                {speakingParas && (
+                  <div className="bg-gradient-to-br from-indigo-900/40 to-violet-900/40 rounded-lg p-4 border border-indigo-500/30">
+                    <h4 className="font-semibold text-white mb-2">Speaking Practice Paragraphs</h4>
+                    <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
+                      {renderBionicText(speakingParas)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : createdContent?.isLoading && isBionicMode ? (
+              <div className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 rounded-lg p-4 border border-yellow-500/30">
+                <h4 className="font-semibold text-white mb-2">Generating content…</h4>
+                <div className="text-gray-200 text-sm">Please wait while we prepare your content.</div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-gray-300 text-sm mb-3">Jot down your own notes about the selected content.</p>
+                <textarea
+                  value={contentNotes}
+                  onChange={(e) => setContentNotes(e.target.value)}
+                  placeholder="Write your notes here..."
+                  className="w-full h-64 bg-black/30 border border-white/20 rounded p-3 text-white placeholder-gray-400"
+                />
+                <div className="mt-3 text-right">
+                  <button onClick={handleSaveNotes} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium">Save Notes</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Content Creation Form (right column) */}
+          <div className="bg-white/10 rounded-lg p-6 border border-white/20 order-1 lg:order-1 lg:col-span-2 lg:h-[36rem] overflow-hidden">
             <div className="flex items-center mb-4">
               <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center mr-3">
                 <FileText className="w-5 h-5 text-white" />
@@ -461,95 +1040,61 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
                 </select>
               </div>
             
-              <button 
-                onClick={handleCreateContent}
-                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+              <button
+                onClick={handleSearchWeb}
+                disabled={isWebSearching}
+                className="w-full mt-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition disabled:opacity-60"
               >
-                Create Content
+                {isWebSearching ? 'Searching the Web…' : 'Search the Web'}
               </button>
-            </div>
-          </div>
-        </div>
+              
+              <button
+                onClick={handleClearFilters}
+                className="w-full mt-2 px-6 py-3 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700 transition"
+              >
+                Clear
+              </button>
       </div>
 
-      {/* Recent Activity Section */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-12">
-        <h2 className="text-4xl font-bold text-white mb-8 text-center">Recent Activity</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Activity Item 1 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center mb-4">
-                <FileText className="w-8 h-8 text-white" />
-              </div>
-              <h4 className="text-white font-semibold text-base mb-2">Environmental Conservation</h4>
-              <p className="text-gray-300 text-sm mb-3">Content created for Primary students</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">2 hours ago</p>
-                <span className="inline-block px-3 py-1 bg-green-500/20 text-green-400 text-sm rounded-full">Completed</span>
-              </div>
+            {/* Generated content moved into the Content Notes box */}
+                </div>
             </div>
           </div>
 
-          {/* Activity Item 2 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mb-4">
-                <Mic className="w-8 h-8 text-white" />
+      {/* Recent Activity - list of generated/searched content with share/download options */}
+      {contentHistory.length > 0 && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
+          <h2 className="text-3xl font-bold text-white mb-6">Recent Activity</h2>
+          <ul className="divide-y divide-white/20">
+            {contentHistory.map(item => {
+              const combined = `${item.title}\n\n${item.content}\n\nMy Notes:\n${contentNotes || ''}`;
+              const message = `JAM Content: "${item.title}"\n\n${combined}`;
+              const waHref = `https://wa.me/?text=${encodeURIComponent(message)}`;
+              const mailHref = `mailto:?subject=${encodeURIComponent('JAM Content: ' + item.title)}&body=${encodeURIComponent(message)}`;
+              const blob = new Blob([combined], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              return (
+                <li key={item.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-semibold truncate" title={item.title}>{item.title}</div>
+                    <div className="text-gray-300 text-xs">{item.createdAt.toLocaleString()}</div>
               </div>
-              <h4 className="text-white font-semibold text-base mb-2">Technology Impact Discussion</h4>
-              <p className="text-gray-300 text-sm mb-3">Recording session completed</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">1 day ago</p>
-                <span className="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 text-sm rounded-full">Recording</span>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <a href={url} download={`${item.title.replace(/[^a-z0-9\-_. ]/gi, '').replace(/\s+/g, '-')}.txt`} className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium">Download</a>
+                    <a href={waHref} target="_blank" rel="noopener noreferrer" className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium">WhatsApp</a>
+                    <a href={mailHref} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Email</a>
               </div>
+                </li>
+              );
+            })}
+          </ul>
             </div>
-          </div>
-
-          {/* Activity Item 3 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full flex items-center justify-center mb-4">
-                <BarChart3 className="w-8 h-8 text-white" />
-              </div>
-              <h4 className="text-white font-semibold text-base mb-2">Mental Health Awareness</h4>
-              <p className="text-gray-300 text-sm mb-3">Analytics report generated</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">3 days ago</p>
-                <span className="inline-block px-3 py-1 bg-purple-500/20 text-purple-400 text-sm rounded-full">Analysis</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Activity Item 4 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-pink-500 rounded-full flex items-center justify-center mb-4">
-                <MessageSquare className="w-8 h-8 text-white" />
-              </div>
-              <h4 className="text-white font-semibold text-base mb-2">Renewable Energy Debate</h4>
-              <p className="text-gray-300 text-sm mb-3">Discussion topic created</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">1 week ago</p>
-                <span className="inline-block px-3 py-1 bg-orange-500/20 text-orange-400 text-sm rounded-full">Topic</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* View All Activities Button */}
-        <div className="text-center pt-8">
-          <button className="px-8 py-3 bg-white/20 text-white rounded-lg font-semibold hover:bg-white/30 transition-colors border border-white/30 text-lg">
-            View All Activities
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 
   const renderRecordingStudioTab = () => (
-    <div className="w-full max-w-4xl mx-auto space-y-8">
+    <div className="w-full max-w-7xl mx-auto space-y-8">
       <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
         <h2 className="text-3xl font-bold text-white mb-6 text-center">Recording Studio</h2>
         
@@ -557,6 +1102,12 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
           {/* Unified Recording Interface */}
           <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg p-8 border border-purple-500/30 relative">
             {/* Character and Timer Selection */}
+            {/* Topic Title row */}
+            <div className="w-full mb-4 text-center">
+              <div className="inline-block px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-xl font-semibold">
+                {topicTitle || 'Healthy Food'}
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {/* Character Selection Dropdown */}
               <div>
@@ -660,12 +1211,13 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
                 )}
               </div>
               
-              {/* Timer Display - Top right of robot */}
+              {/* Timer Display - Top right of robot with participants */}
               {timerActive && (
                 <div className="absolute -top-4 -right-4 text-2xl font-bold text-red-400 bg-black/50 rounded-full px-3 py-1">
                   {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
                 </div>
               )}
+              {/* Removed participants count */}
             </div>
 
             {/* Animated Waveform */}
@@ -732,6 +1284,21 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
               </button>
             </div>
             
+            {/* Shared Notes (Realtime synced) */}
+            <div className="mt-6 bg-white/10 rounded-lg p-4 border border-white/20">
+              <div className="text-white font-semibold mb-2">Shared Notes (synced)</div>
+              <textarea
+                value={sharedNotes}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSharedNotes(val);
+                  channelRef.current?.send({ type: 'broadcast', event: 'notes_update', payload: { text: val } });
+                }}
+                placeholder="Type notes visible to everyone in this room..."
+                className="w-full h-24 bg-black/30 border border-white/20 rounded p-2 text-white"
+              />
+            </div>
+
             {/* Audio Playback - Only show when audio is available */}
             {audioURL && (
               <div className="mt-6 bg-white/10 rounded-lg p-4 border border-white/20">
@@ -744,9 +1311,6 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
                     controls 
                     src={audioURL} 
                     className="w-full"
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    onEnded={() => setIsPlaying(false)}
                   />
                 </div>
                 <div className="flex justify-center mt-3">
@@ -759,141 +1323,281 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
                 </div>
               </div>
             )}
-          </div>
-        </div>
       </div>
 
-      {/* Recent Activity Section */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-12">
-        <h2 className="text-4xl font-bold text-white mb-8 text-center">Recent Activity</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Activity Item 1 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mb-4">
-                <Mic className="w-8 h-8 text-white" />
               </div>
-              <h4 className="text-white font-semibold text-base mb-2">Environmental Conservation Discussion</h4>
-              <p className="text-gray-300 text-sm mb-3">Recording session with Captain Courage</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">1 hour ago</p>
-                <span className="inline-block px-3 py-1 bg-green-500/20 text-green-400 text-sm rounded-full">Completed</span>
               </div>
+      {/* My Recordings - outside and below the Recording Studio box, list format with share options */}
+      {recordings.length > 0 && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
+          <h3 className="text-2xl font-bold text-white mb-6">My Recordings</h3>
+          <ul className="divide-y divide-white/20">
+            {recordings.map((rec) => {
+              const message = buildShareMessage(rec);
+              const waHref = `https://wa.me/?text=${encodeURIComponent(message)}`;
+              const mailHref = `mailto:?subject=${encodeURIComponent('JAM Session Recording: ' + rec.title)}&body=${encodeURIComponent(message)}`;
+              return (
+                <li key={rec.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-semibold truncate" title={rec.title}>{rec.title}</div>
+                    <div className="text-gray-300 text-xs">{rec.createdAt.toLocaleString()}</div>
+                    <div className="mt-2">
+                      <audio controls src={rec.url} className="w-full md:w-[28rem]" />
             </div>
           </div>
-
-          {/* Activity Item 2 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center mb-4">
-                <Mic className="w-8 h-8 text-white" />
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button onClick={() => handleDownloadRecording(rec)} className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium">Download</button>
+                    <button onClick={() => handleNativeShare(rec)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Share</button>
+                    <a href={waHref} target="_blank" rel="noopener noreferrer" className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium">WhatsApp</a>
+                    <a href={mailHref} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Email</a>
               </div>
-              <h4 className="text-white font-semibold text-base mb-2">Technology Impact Debate</h4>
-              <p className="text-gray-300 text-sm mb-3">Recording session with Lightning Bolt</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">3 hours ago</p>
-                <span className="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 text-sm rounded-full">Recording</span>
+                </li>
+              );
+            })}
+          </ul>
               </div>
-            </div>
-          </div>
-
-          {/* Activity Item 3 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center mb-4">
-                <Mic className="w-8 h-8 text-white" />
-              </div>
-              <h4 className="text-white font-semibold text-base mb-2">Mental Health Awareness Talk</h4>
-              <p className="text-gray-300 text-sm mb-3">Recording session with Sparkle the Fairy</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">1 day ago</p>
-                <span className="inline-block px-3 py-1 bg-purple-500/20 text-purple-400 text-sm rounded-full">Analysis</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Activity Item 4 */}
-          <div className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-500 rounded-full flex items-center justify-center mb-4">
-                <Mic className="w-8 h-8 text-white" />
-              </div>
-              <h4 className="text-white font-semibold text-base mb-2">Renewable Energy Presentation</h4>
-              <p className="text-gray-300 text-sm mb-3">Recording session with Splash the Dolphin</p>
-              <div className="text-center">
-                <p className="text-gray-300 text-sm mb-2">2 days ago</p>
-                <span className="inline-block px-3 py-1 bg-orange-500/20 text-orange-400 text-sm rounded-full">Topic</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* View All Activities Button */}
-        <div className="text-center pt-8">
-          <button className="px-8 py-3 bg-white/20 text-white rounded-lg font-semibold hover:bg-white/30 transition-colors border border-white/30 text-lg">
-            View All Activities
-          </button>
-        </div>
-      </div>
+      )}
+      
     </div>
   );
 
   const renderInsightsTab = () => (
     <div className="w-full max-w-4xl mx-auto">
       <div className="bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
-        <h2 className="text-3xl font-bold text-white mb-6 text-center">Insights & Analytics</h2>
+        <h2 className="text-3xl font-bold text-white mb-6 text-center">Insights</h2>
         
+        {/* Speak AI style insights derived from current content */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white/20 rounded-lg p-6 text-center">
-            <div className="text-3xl font-bold text-green-400 mb-2">85%</div>
-            <div className="text-white font-semibold">Clarity Score</div>
+          <div className="bg-white/20 rounded-lg p-6">
+            <div className="text-xs text-gray-200 uppercase tracking-wide mb-1">Overall Tone</div>
+            <div className="text-2xl font-bold text-green-300">Positive</div>
+            <div className="text-gray-200 text-sm mt-2">Friendly, encouraging language with clear explanations.</div>
           </div>
-          <div className="bg-white/20 rounded-lg p-6 text-center">
-            <div className="text-3xl font-bold text-blue-400 mb-2">127</div>
-            <div className="text-white font-semibold">Words Spoken</div>
+          <div className="bg-white/20 rounded-lg p-6">
+            <div className="text-xs text-gray-200 uppercase tracking-wide mb-1">Key Concepts</div>
+            <ul className="text-gray-100 text-sm list-disc pl-5 space-y-1">
+              <li>Core definition and purpose</li>
+              <li>Real‑life example</li>
+              <li>Mini activity to apply</li>
+            </ul>
           </div>
-          <div className="bg-white/20 rounded-lg p-6 text-center">
-            <div className="text-3xl font-bold text-purple-400 mb-2">2m 15s</div>
-            <div className="text-white font-semibold">Session Duration</div>
+          <div className="bg-white/20 rounded-lg p-6">
+            <div className="text-xs text-gray-200 uppercase tracking-wide mb-1">Next Best Steps</div>
+            <ul className="text-gray-100 text-sm list-disc pl-5 space-y-1">
+              <li>Explain the topic in your own words</li>
+              <li>Find one new example around you</li>
+              <li>Teach a friend in 3 bullets</li>
+            </ul>
           </div>
         </div>
 
-        <div className="space-y-6">
           <div className="bg-white/10 rounded-lg p-6 border border-white/20">
-            <h3 className="text-xl font-bold text-white mb-4">Performance Metrics</h3>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-white mb-1">
-                  <span>Pronunciation Accuracy</span>
-                  <span>92%</span>
+          <h3 className="text-xl font-bold text-white mb-4">AI Summary</h3>
+          <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
+            {createdContent?.content
+              ? `Here’s a concise Speak‑style recap of “${createdContent.title}”. Focus on the big idea, a vivid example, and one tiny action you can do now.
+
+${createdContent.content.split('\n').slice(0, 8).join('\n')}`
+              : 'Generate or search content to view insights.'}
                 </div>
-                <div className="w-full bg-gray-600 rounded-full h-2">
-                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '92%' }}></div>
+                </div>
+
+        {/* Overall Report (aggregate) */}
+        {recordings.length > 0 && (
+          <div className="bg-gradient-to-br from-cyan-500/10 via-fuchsia-500/10 to-violet-500/10 rounded-2xl p-6 border border-white/20 shadow-xl mt-6">
+            <h3 className="text-xl font-bold text-white mb-2">Overall Report</h3>
+            <div className="text-gray-200 text-sm mb-4">{buildAggregateFeedback()}</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {(() => {
+                const vals = recordings.map(r => recordingInsights[r.id]).filter(Boolean) as any[];
+                const totalMin = Math.round(vals.reduce((a, v) => a + (v?.durationSec || 0), 0) / 60);
+                const avgWpm = vals.length ? Math.round(vals.reduce((a, v) => a + (v?.wpm || 0), 0) / vals.length) : 0;
+                const avgPitch = vals.length ? Math.round(vals.reduce((a, v) => a + (v?.avgPitchHz || 0), 0) / vals.length) : 0;
+                const bestWpm = vals.reduce((m, v) => Math.max(m, v?.wpm || 0), 0);
+                const tiles = [
+                  { label: 'Total Minutes', value: `${totalMin}m`, bg: 'from-cyan-500/20 to-blue-500/20' },
+                  { label: 'Avg WPM', value: `${avgWpm}`, bg: 'from-pink-500/20 to-fuchsia-500/20' },
+                  { label: 'Avg Pitch', value: `${avgPitch} Hz`, bg: 'from-emerald-500/20 to-teal-500/20' },
+                  { label: 'Best WPM', value: `${bestWpm}`, bg: 'from-amber-500/20 to-orange-500/20' },
+                ];
+                return tiles.map(t => (
+                  <div key={t.label} className={`bg-gradient-to-br ${t.bg} rounded-xl p-4 border border-white/20 shadow-lg backdrop-blur-sm`}> 
+                    <div className="text-gray-300 text-xs uppercase tracking-wide">{t.label}</div>
+                    <div className="text-white text-2xl font-extrabold mt-1 drop-shadow">{t.value}</div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Recording insights table */}
+        {recordings.length > 0 && (
+          <div className="bg-white/10 rounded-lg p-6 border border-white/20 mt-6">
+            <h3 className="text-xl font-bold text-white mb-4">Recording Insights</h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm text-gray-100">
+                <thead>
+                  <tr className="text-left">
+                    <th className="pb-2 pr-4">Title</th>
+                    <th className="pb-2 pr-4">Words</th>
+                    <th className="pb-2 pr-4">Duration</th>
+                    <th className="pb-2 pr-4">WPM</th>
+                    <th className="pb-2 pr-4">Avg Pitch (Hz)</th>
+                    <th className="pb-2 pr-4">Pitch Level</th>
+                    <th className="pb-2 pr-4">Style</th>
+                    <th className="pb-2 pr-4">Pronunciation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recordings.map(r => {
+                    const m = recordingInsights[r.id];
+                    return (
+                      <tr key={r.id} className="border-t border-white/10">
+                        <td className="py-2 pr-4">{r.title}</td>
+                        <td className="py-2 pr-4">{m?.words ?? '-'}</td>
+                        <td className="py-2 pr-4">{m?.durationSec ? `${m.durationSec}s` : '-'}</td>
+                        <td className="py-2 pr-4">{m?.wpm ?? '-'}</td>
+                        <td className="py-2 pr-4">{m?.avgPitchHz ?? '-'}</td>
+                        <td className="py-2 pr-4">{m?.pitchLevel ?? '-'}</td>
+                        <td className="py-2 pr-4">{m?.style ?? '-'}</td>
+                        <td className="py-2 pr-4">{m?.pronunciation ?? '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            {/* Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                <div className="text-white font-semibold mb-2">Words per Recording</div>
+                <Bar
+                  data={{
+                    labels: recordings.map(r => r.title.length > 14 ? r.title.slice(0,14) + '…' : r.title),
+                    datasets: [{
+                      label: 'Words',
+                      data: recordings.map(r => recordingInsights[r.id]?.words ?? 0),
+                      backgroundColor: ['#22d3ee']
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    plugins: {
+                      legend: { display: false, labels: { color: '#e5e7eb', font: { size: 12 } } },
+                      tooltip: { enabled: true }
+                    },
+                    scales: {
+                      x: { ticks: { color: '#e5e7eb' } },
+                      y: { ticks: { color: '#e5e7eb' } }
+                    }
+                  }}
+                />
+                </div>
+              <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                <div className="text-white font-semibold mb-2">Average Pitch (Hz)</div>
+                <Line
+                  data={{
+                    labels: recordings.map(r => r.title.length > 14 ? r.title.slice(0,14) + '…' : r.title),
+                    datasets: [{
+                      label: 'Avg Pitch (Hz)',
+                      data: recordings.map(r => recordingInsights[r.id]?.avgPitchHz ?? 0),
+                      borderColor: '#f472b6',
+                      backgroundColor: 'rgba(244,114,182,0.25)',
+                      tension: 0.3,
+                      fill: true
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    plugins: { legend: { display: false, labels: { color: '#e5e7eb', font: { size: 12 } } } },
+                    scales: { x: { ticks: { color: '#e5e7eb' } }, y: { ticks: { color: '#e5e7eb' } } }
+                  }}
+                />
+                </div>
+              <div className="bg-white/10 rounded-lg p-4 border border-white/20 md:col-span-2">
+                <div className="text-white font-semibold mb-2">Communication Style Distribution</div>
+                <Pie
+                  data={{
+                    labels: ['Informative','Persuasive','Narrative','Descriptive','Unknown'],
+                    datasets: [{
+                      label: 'Style',
+                      data: ['Informative','Persuasive','Narrative','Descriptive','Unknown'].map(s => recordings.reduce((acc, r) => acc + ((recordingInsights[r.id]?.style === s) ? 1 : 0), 0)),
+                      backgroundColor: ['#22d3ee','#f472b6','#f59e0b','#34d399','#94a3b8']
+                    }]
+                  }}
+                  options={{ responsive: true, plugins: { legend: { labels: { color: '#e5e7eb', font: { size: 12 } } } } }}
+                />
+              </div>
+              {/* Recent recordings quick list with hover feedback */}
+              <div className="bg-white/10 rounded-lg p-4 border border-white/20 md:col-span-2">
+                <div className="text-white font-semibold mb-2">Recent Recordings</div>
+                <ul className="divide-y divide-white/10">
+                  {recordings.map(r => {
+                    const m = recordingInsights[r.id];
+                    const tip = buildFeedbackFromMetrics(m);
+                    return (
+                      <li key={r.id} className="py-2 text-gray-100 flex items-center justify-between" title={tip}>
+                        <span className="truncate mr-4" style={{ maxWidth: '70%' }}>{r.title}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-300 text-xs">{m ? `${m.words}w • ${m.wpm}wpm • ${m.avgPitchHz}Hz` : 'processing…'}</span>
+                          <button
+                            onClick={() => { setInsightsModalRecId(r.id); setInsightsModalOpen(true); }}
+                            className="px-2 py-1 rounded bg-gradient-to-r from-pink-500 to-violet-500 text-white text-xs shadow-md hover:from-pink-400 hover:to-violet-400"
+                          >
+                            Insights
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+                </div>
+                </div>
+        )}
+      </div>
+      {/* Glossy modal for per-recording insights */}
+      {insightsModalOpen && insightsModalRecId && (() => {
+        const r = recordings.find(x => x.id === insightsModalRecId);
+        const m = r ? recordingInsights[r.id] : undefined;
+        if (!r) return null;
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="w-full max-w-2xl bg-gradient-to-br from-indigo-900/80 to-purple-900/80 border border-white/30 rounded-2xl shadow-2xl p-6 relative">
+              <button className="absolute top-3 right-3 text-white/80 hover:text-white" onClick={() => setInsightsModalOpen(false)}>✕</button>
+              <div className="text-2xl font-bold text-white mb-2">{r.title}</div>
+              <div className="text-gray-300 text-sm mb-4">{new Date(r.createdAt).toLocaleString()}</div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <div className="text-gray-300 text-xs uppercase">Words</div>
+                  <div className="text-white text-xl font-bold">{m?.words ?? '-'}</div>
+                </div>
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <div className="text-gray-300 text-xs uppercase">WPM</div>
+                  <div className="text-white text-xl font-bold">{m?.wpm ?? '-'}</div>
+                </div>
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <div className="text-gray-300 text-xs uppercase">Avg Pitch</div>
+                  <div className="text-white text-xl font-bold">{m?.avgPitchHz ?? '-'} Hz</div>
+                </div>
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <div className="text-gray-300 text-xs uppercase">Pitch Level</div>
+                  <div className="text-white text-xl font-bold">{m?.pitchLevel ?? '-'}</div>
                 </div>
               </div>
-              <div>
-                <div className="flex justify-between text-white mb-1">
-                  <span>Speaking Pace</span>
-                  <span>78%</span>
-                </div>
-                <div className="w-full bg-gray-600 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: '78%' }}></div>
-                </div>
+              <div className="bg-white/10 rounded-lg p-4 border border-white/20 mb-3">
+                <div className="text-gray-300 text-xs uppercase mb-1">Style & Pronunciation</div>
+                <div className="text-white">Style: {m?.style ?? '-'} • Pronunciation: {m?.pronunciation ?? '-'}</div>
               </div>
-              <div>
-                <div className="flex justify-between text-white mb-1">
-                  <span>Confidence Level</span>
-                  <span>85%</span>
-                </div>
-                <div className="w-full bg-gray-600 rounded-full h-2">
-                  <div className="bg-purple-500 h-2 rounded-full" style={{ width: '85%' }}></div>
-                </div>
+              <div className="bg-gradient-to-r from-pink-500/20 to-violet-500/20 rounded-lg p-4 border border-pink-400/30">
+                <div className="text-white font-semibold mb-1">Feedback</div>
+                <div className="text-gray-100 text-sm">{buildFeedbackFromMetrics(m)}</div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 
@@ -944,7 +1648,7 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
       <main className="flex-1 flex justify-center pt-12 px-4">
         <div className="max-w-8xl w-full flex justify-center gap-12">
           {/* Left Section */}
-          <div className="flex flex-col items-center flex-1 max-w-4xl">
+          <div className="flex flex-col items-center flex-1 max-w-7xl">
             {/* Tab Bar */}
             <div className="flex gap-6 mb-4 mt-8">
               {[
@@ -975,109 +1679,7 @@ Remember, the best way to understand ${summary} is to explore it with curiosity 
             </div>
           </div>
 
-          {/* Right Sidebar */}
-          <div className="w-[380px] h-[680px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-blue-200/50 p-10 flex flex-col">
-            <div className="flex items-center mb-6">
-              <div className="w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mr-4">
-                <Volume2 className="w-8 h-8 text-white" />
-              </div>
-              <h3 className="text-3xl font-bold text-white">
-                {activeTab === 'create' ? 'Content Notes' : 'Audio Notes'}
-              </h3>
-            </div>
-            
-            {activeTab === 'record' ? (
-              // Show Audio Notes only for Recording Studio tab
-              <>
-                {recordedText ? (
-                  // Show recorded text when available
-                  <div className="flex-1 overflow-y-auto">
-                    <div className="bg-gradient-to-br from-green-900/50 to-blue-900/50 rounded-lg p-4 border border-green-500/30">
-                      <h4 className="font-semibold text-white mb-3">Recorded Audio Text</h4>
-                      <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
-                        {recordedText}
-                      </div>
-                    </div>
-                  </div>
-                ) : audioURL && !recordedText ? (
-                  // Show loading state when audio is recorded but text is not yet available
-                  <div className="flex-1 overflow-y-auto">
-                    <div className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 rounded-lg p-4 border border-yellow-500/30">
-                      <h4 className="font-semibold text-white mb-3">Processing Audio...</h4>
-                      <div className="text-gray-200 text-sm leading-relaxed">
-                        Converting your recorded audio to text. This may take a few moments...
-                      </div>
-                      <div className="mt-3 flex justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  // Show default Audio Notes content when no recording
-                  <>
-                    <p className="text-gray-300 text-sm mb-6">
-                      Your recorded audio will appear here as text after you complete a recording session.
-                    </p>
-                    
-                    <div className="space-y-4 mb-6">
-                      <div className="bg-white/20 rounded-lg p-4 text-center">
-                        <div className="text-3xl font-bold text-green-400 mb-2">0</div>
-                        <div className="text-white font-semibold">Recordings</div>
-                      </div>
-                      <div className="bg-white/20 rounded-lg p-4 text-center">
-                        <div className="text-3xl font-bold text-blue-400 mb-2">0</div>
-                        <div className="text-white font-semibold">Words Transcribed</div>
-                      </div>
-                      <div className="bg-white/20 rounded-lg p-4 text-center">
-                        <div className="text-3xl font-bold text-purple-400 mb-2">0m</div>
-                        <div className="text-white font-semibold">Total Time</div>
-                      </div>
-                    </div>
-                    
-                    <button className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition">
-                      Start Recording
-                    </button>
-                  </>
-                )}
-              </>
-            ) : activeTab === 'create' && createdContent ? (
-              // Show created content when Create Content tab is active
-              <div className="flex-1 overflow-y-auto">
-                <div className="bg-gradient-to-br from-purple-900/50 to-blue-900/50 rounded-lg p-4 border border-purple-500/30">
-                  <h4 className="font-semibold text-white mb-3">AI-Generated Content</h4>
-                  <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
-                    {createdContent.content}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              // Show default insights for other tabs
-              <>
-                <p className="text-gray-300 text-sm mb-6">
-                  Track your JAM session progress and get personalized feedback to improve your speaking skills.
-                </p>
-                
-                <div className="space-y-4 mb-6">
-                  <div className="bg-white/20 rounded-lg p-4 text-center">
-                    <div className="text-3xl font-bold text-green-400 mb-2">85%</div>
-                    <div className="text-white font-semibold">Accuracy Score</div>
-                  </div>
-                  <div className="bg-white/20 rounded-lg p-4 text-center">
-                    <div className="text-3xl font-bold text-blue-400 mb-2">127</div>
-                    <div className="text-white font-semibold">Words Practiced</div>
-                  </div>
-                  <div className="bg-white/20 rounded-lg p-4 text-center">
-                    <div className="text-3xl font-bold text-purple-400 mb-2">2h 15m</div>
-                    <div className="text-white font-semibold">Practice Time</div>
-                  </div>
-                </div>
-                
-                <button className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition">
-                  View Detailed Report
-                </button>
-              </>
-            )}
-          </div>
+          {/* Right Sidebar removed for Insights */}
         </div>
       </main>
     </div>
