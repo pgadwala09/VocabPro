@@ -17,8 +17,28 @@ const VocabularyContext = createContext<VocabularyContextType | undefined>(undef
 
 const initialVocabList: VocabWord[] = [];
 
+// Load from localStorage on initialization
+const loadVocabFromStorage = (): VocabWord[] => {
+  try {
+    const stored = localStorage.getItem('vocabList');
+    return stored ? JSON.parse(stored) : initialVocabList;
+  } catch {
+    return initialVocabList;
+  }
+};
+
 export const VocabularyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [vocabList, setVocabList] = useState<VocabWord[]>(initialVocabList);
+  const [vocabList, setVocabListState] = useState<VocabWord[]>(loadVocabFromStorage);
+
+  // Custom setter that also saves to localStorage
+  const setVocabList = (newList: VocabWord[]) => {
+    setVocabListState(newList);
+    try {
+      localStorage.setItem('vocabList', JSON.stringify(newList));
+    } catch (error) {
+      console.error('Failed to save vocab list to localStorage:', error);
+    }
+  };
   return (
     <VocabularyContext.Provider value={{ vocabList, setVocabList }}>
       {children}

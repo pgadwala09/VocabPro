@@ -9,6 +9,14 @@ export interface Feedback {
   phonemeAccuracy: { value: number; text: string };
   suggestions: string[];
   date: string;
+  // Enhanced analysis fields (optional for backward compatibility)
+  transcription?: string;
+  confidenceScore?: number;
+  duration?: number;
+  wordsPerMinute?: number;
+  averagePitch?: number;
+  difficultyLevel?: 'easy' | 'medium' | 'hard';
+  masteryStatus?: 'learning' | 'practicing' | 'mastered';
 }
 
 interface FeedbackContextType {

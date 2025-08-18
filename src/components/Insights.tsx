@@ -1,5 +1,29 @@
-import React from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useFeedback } from '../hooks/FeedbackContext';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Pie, Bar, Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement
+} from 'chart.js';
+
+ChartJS.register(
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement
+);
 
 const FeedbackCard = ({ feedback }) => (
   <div className="bg-gradient-to-br from-blue-900 to-purple-800 rounded-2xl shadow-xl p-8 w-full max-w-md mx-auto mb-8 text-white relative">
@@ -79,14 +103,134 @@ const FeedbackCard = ({ feedback }) => (
 
 const Insights = () => {
   const { feedbacks } = useFeedback();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showReport, setShowReport] = useState<boolean>(() => new URLSearchParams(location.search).get('report') === '1');
+
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('report') === '1';
+    setShowReport(q);
+  }, [location.search]);
+
+  const totals = useMemo(() => {
+    const count = feedbacks.length;
+    const avg = (arr: number[]) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0);
+    return {
+      count,
+      avgScore: avg(feedbacks.map(f => f.score)),
+      avgClarity: avg(feedbacks.map(f => f.clarity.value)),
+      avgStress: avg(feedbacks.map(f => f.wordStress.value)),
+      avgPace: avg(feedbacks.map(f => f.pace.value)),
+      avgPhoneme: avg(feedbacks.map(f => f.phonemeAccuracy.value))
+    };
+  }, [feedbacks]);
+
+  const wordsPerDay = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const f of feedbacks) {
+      const day = new Date(f.date).toLocaleDateString();
+      map[day] = (map[day] || 0) + 1;
+    }
+    const labels = Object.keys(map);
+    return {
+      labels,
+      data: labels.map(l => map[l])
+    };
+  }, [feedbacks]);
+
+  const pieData = useMemo(() => ({
+    labels: ['Clarity', 'Word Stress', 'Pace', 'Phoneme'],
+    datasets: [{
+      data: [totals.avgClarity, totals.avgStress, totals.avgPace, totals.avgPhoneme],
+      backgroundColor: ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24']
+    }]
+  }), [totals]);
+
+  const barData = useMemo(() => ({
+    labels: feedbacks.map(f => f.word),
+    datasets: [{
+      label: 'Score',
+      data: feedbacks.map(f => f.score),
+      backgroundColor: '#6366f1'
+    }]
+  }), [feedbacks]);
+
+  const lineData = useMemo(() => ({
+    labels: wordsPerDay.labels,
+    datasets: [{ label: 'Words per day', data: wordsPerDay.data, borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.3)' }]
+  }), [wordsPerDay]);
+
+  if (!showReport) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 py-12 px-4 relative z-40">
+        <div className="max-w-md mx-auto relative z-40 pointer-events-auto">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 rounded-full bg-yellow-400 text-indigo-900 font-extrabold flex items-center justify-center">🧠</div>
+            <h1 className="text-3xl font-extrabold text-white">Learn Insights</h1>
+          </div>
+          <p className="text-blue-200 mb-6">Track your pronunciation progress and get personalized feedback to improve your speaking skills.</p>
+          <div className="space-y-4">
+            <div className="bg-white/10 rounded-xl p-4 text-white">
+              <div className="text-sm text-blue-200">Accuracy Score</div>
+              <div className="text-3xl font-extrabold text-green-400">{totals.avgScore}%</div>
+            </div>
+            <div className="bg-white/10 rounded-xl p-4 text-white">
+              <div className="text-sm text-blue-200">Words Practiced</div>
+              <div className="text-3xl font-extrabold text-blue-300">{totals.count}</div>
+            </div>
+            <div className="bg-white/10 rounded-xl p-4 text-white">
+              <div className="text-sm text-blue-200">Practice Time</div>
+              <div className="text-3xl font-extrabold text-purple-300">~{Math.ceil(totals.count * 1.2)}m</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/insights?report=1', { replace: false })}
+            className="mt-8 w-full px-6 py-3 rounded-xl bg-blue-600 text-white font-bold shadow hover:bg-blue-500 cursor-pointer relative z-50"
+          >
+            View Detailed Report
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 py-12 px-4">
-      <h1 className="text-4xl font-bold text-white text-center mb-12">Your Pronunciation Insights</h1>
-      {feedbacks.length === 0 ? (
-        <div className="text-center text-blue-200 text-xl mt-24">No feedback yet. Practice words in Echo Match to see your insights!</div>
-      ) : (
-        feedbacks.map((fb, idx) => <FeedbackCard key={fb.word + fb.date + idx} feedback={fb} />)
-      )}
+      <div className="max-w-5xl mx-auto space-y-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-extrabold text-white">Detailed Report</h2>
+          <button onClick={() => navigate('/insights', { replace: true })} className="px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20">Back</button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white/10 rounded-xl p-4 text-white"><div className="text-sm text-blue-200">Avg Clarity</div><div className="text-3xl font-bold">{totals.avgClarity}%</div></div>
+          <div className="bg-white/10 rounded-xl p-4 text-white"><div className="text-sm text-blue-200">Avg Stress</div><div className="text-3xl font-bold">{totals.avgStress}%</div></div>
+          <div className="bg-white/10 rounded-xl p-4 text-white"><div className="text-sm text-blue-200">Avg Pace</div><div className="text-3xl font-bold">{totals.avgPace}%</div></div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white/10 rounded-xl p-4"><Pie data={pieData} /></div>
+          <div className="bg-white/10 rounded-xl p-4"><Line data={lineData} /></div>
+        </div>
+
+        <div className="bg-white/10 rounded-xl p-4"><Bar data={barData} /></div>
+
+        <div className="bg-white/10 rounded-xl p-4 text-white">
+          <h3 className="text-xl font-bold mb-3">All Words</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {feedbacks.map((f, i) => (
+              <div key={f.word + f.date + i} className="bg-white/5 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-white">{f.word}</div>
+                  <div className="text-xs text-blue-200">{new Date(f.date).toLocaleString()}</div>
+                </div>
+                <div className="text-blue-200 text-sm">Score: <span className="text-white font-bold">{f.score}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
