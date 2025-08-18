@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
+import { generateElevenLabsSpeech, speakWithBrowser } from '../lib/tts';
+import EmojiPickerLib from 'emoji-picker-react';
+
 
 interface DebateData {
   id: string;
@@ -39,13 +43,36 @@ const DebateTournament: React.FC = () => {
   });
   
   const [isDebateStarted, setIsDebateStarted] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [builderTime, setBuilderTime] = useState(0);
   const [breakerTime, setBreakerTime] = useState(0);
   const [activeRole, setActiveRole] = useState<'builder' | 'breaker' | null>(null);
+  // Refs to avoid stale closures in the timer interval
+  const builderTimeRef = useRef(0);
+  const breakerTimeRef = useRef(0);
+  const activeRoleRef = useRef<'builder' | 'breaker' | null>(null);
+  const startedRef = useRef(false);
+  const pausedRef = useRef(false);
+
+  useEffect(() => { builderTimeRef.current = builderTime; }, [builderTime]);
+  useEffect(() => { breakerTimeRef.current = breakerTime; }, [breakerTime]);
+  useEffect(() => { activeRoleRef.current = activeRole; }, [activeRole]);
+  useEffect(() => { startedRef.current = isDebateStarted; }, [isDebateStarted]);
+  useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
+  const [builderScore, setBuilderScore] = useState(0);
+  const [breakerScore, setBreakerScore] = useState(0);
+  const [participants, setParticipants] = useState(1);
+  const channelRef = useRef<any>(null);
+  const leaderRef = useRef(false);
+  const tickIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [summaryAudioUrl, setSummaryAudioUrl] = useState<string | null>(null);
+  const [summaryUploading, setSummaryUploading] = useState(false);
+  const SUMMARY_BUCKET = 'debate-summaries';
+
   interface DebateActivity {
     id: string;
     topic: string;
@@ -94,6 +121,8 @@ const DebateTournament: React.FC = () => {
   const initials = fullName
     ? fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+  const [uploading, setUploading] = useState(false);
+  const SUPABASE_BUCKET = 'debate-recordings';
 
   useEffect(() => {
     if (!currentDebate) {
@@ -105,6 +134,164 @@ const DebateTournament: React.FC = () => {
       setBreakerTime(halfDuration);
     }
   }, [currentDebate, navigate]);
+
+  // Resolve room id from ?room= param or fallback to debate id
+  const roomId = useMemo(() => {
+    const q = new URLSearchParams(window.location.search).get('room');
+    return q || currentDebate?.id || 'default';
+  }, [currentDebate?.id]);
+
+  // Realtime: join room and sync state
+  useEffect(() => {
+    if (!currentDebate) return;
+    const room = `debate:${roomId}`;
+    const presenceKey = (user?.id as string) || Math.random().toString(36).slice(2);
+    const channel = supabase.channel(room, { config: { presence: { key: presenceKey } } });
+
+    // presence
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      let count = 0;
+      Object.values(state).forEach((arr: any) => { count += Array.isArray(arr) ? arr.length : 0; });
+      setParticipants(Math.max(1, count));
+    });
+
+    // state sync request
+    channel.on('broadcast', { event: 'state_request' }, () => {
+      const snapshot = buildSnapshot();
+      channel.send({ type: 'broadcast', event: 'state_sync', payload: snapshot });
+    });
+
+    // receive full state
+    channel.on('broadcast', { event: 'state_sync' }, ({ payload }) => {
+      if (!payload) return;
+      setIsDebateStarted(!!payload.isDebateStarted);
+      setIsPaused(!!payload.isPaused);
+      setActiveRole(payload.activeRole ?? null);
+      if (typeof payload.builderTime === 'number') setBuilderTime(payload.builderTime);
+      if (typeof payload.breakerTime === 'number') setBreakerTime(payload.breakerTime);
+      if (typeof payload.builderScore === 'number') setBuilderScore(payload.builderScore);
+      if (typeof payload.breakerScore === 'number') setBreakerScore(payload.breakerScore);
+    });
+
+    // simple update events
+    channel.on('broadcast', { event: 'score_update' }, ({ payload }) => {
+      if (payload?.side === 'builder') setBuilderScore(payload.value ?? 0);
+      if (payload?.side === 'breaker') setBreakerScore(payload.value ?? 0);
+    });
+    channel.on('broadcast', { event: 'role_update' }, ({ payload }) => {
+      setActiveRole(payload?.role ?? null);
+    });
+    channel.on('broadcast', { event: 'start_stop' }, ({ payload }) => {
+      setIsDebateStarted(!!payload?.started);
+      if (!payload?.started) setIsPaused(false);
+    });
+
+    // pause/resume updates
+    channel.on('broadcast', { event: 'pause_state' }, ({ payload }) => {
+      setIsPaused(!!payload?.paused);
+    });
+
+    // chat: receive message
+    channel.on('broadcast', { event: 'chat_message' }, ({ payload }) => {
+      if (!payload?.id || !payload?.text) return;
+      setMessages((prev) => [...prev, payload]);
+    });
+
+    // chat: receive reaction
+    channel.on('broadcast', { event: 'reaction' }, ({ payload }) => {
+      const { messageId, emoji, user: actor } = payload || {};
+      if (!messageId || !emoji) return;
+      setMessages((prev) => {
+        const updated = prev.map((msg) => {
+          if (msg.id !== messageId) return msg;
+          const existing = msg.reactions?.find((r) => r.emoji === emoji);
+          if (existing) {
+            const has = existing.users.includes(actor);
+            const users = has ? existing.users.filter((u) => u !== actor) : [...existing.users, actor];
+            const count = Math.max(0, has ? existing.count - 1 : existing.count + 1);
+            const reactions = users.length === 0
+              ? msg.reactions?.filter((r) => r.emoji !== emoji) || []
+              : (msg.reactions || []).map((r) => (r.emoji === emoji ? { ...r, users, count } : r));
+            return { ...msg, reactions };
+          }
+          // create new reaction
+          const reactions = [ ...(msg.reactions || []), { emoji, count: 1, users: [actor] } ];
+          return { ...msg, reactions };
+        });
+        return updated;
+      });
+    });
+
+    // followers receive authoritative ticks
+    channel.on('broadcast', { event: 'tick' }, ({ payload }) => {
+      if (!leaderRef.current) {
+        if (typeof payload?.builderTime === 'number') {
+          builderTimeRef.current = payload.builderTime;
+          setBuilderTime(payload.builderTime);
+        }
+        if (typeof payload?.breakerTime === 'number') {
+          breakerTimeRef.current = payload.breakerTime;
+          setBreakerTime(payload.breakerTime);
+        }
+        if (payload?.activeRole === 'builder' || payload?.activeRole === 'breaker' || payload?.activeRole === null) {
+          activeRoleRef.current = payload.activeRole;
+          setActiveRole(payload.activeRole);
+        }
+      }
+    });
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.track({ online_at: Date.now() });
+        channel.send({ type: 'broadcast', event: 'state_request', payload: {} });
+      }
+    });
+
+    channelRef.current = channel;
+
+    // try to upsert debate metadata (if table exists)
+    (async () => {
+      try {
+        await supabase.from('debates').upsert({
+          id: currentDebate.id,
+          topic: currentDebate.topic,
+          debate_style: currentDebate.debateStyle,
+          duration: currentDebate.duration,
+          created_at: currentDebate.createdAt?.toISOString?.() || new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch {}
+    })();
+
+    return () => {
+      try { if (channel) supabase.removeChannel(channel); } catch {}
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
+
+  const buildSnapshot = () => ({
+    isDebateStarted,
+    isPaused,
+    activeRole,
+    builderTime,
+    breakerTime,
+    builderScore,
+    breakerScore,
+    ts: Date.now(),
+  });
+
+  const broadcast = (event: string, payload: any) => {
+    channelRef.current?.send({ type: 'broadcast', event, payload });
+    // best-effort persistence (ignore if table missing)
+    try {
+      supabase.from('debate_events').insert({
+        debate_id: currentDebate?.id,
+        event_type: event,
+        payload,
+        created_at: new Date().toISOString(),
+      });
+    } catch {}
+  };
 
   // Save recordings to localStorage
   useEffect(() => {
@@ -133,36 +320,53 @@ const DebateTournament: React.FC = () => {
     };
   }, [showEmojiPicker]);
 
-  // Timer effect
+  // Leader-only ticking loop broadcasting authoritative state
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (isDebateStarted && activeRole) {
-      interval = setInterval(() => {
-        if (activeRole === 'builder' && builderTime > 0) {
-          setBuilderTime(time => time - 1);
-        } else if (activeRole === 'breaker' && breakerTime > 0) {
-          setBreakerTime(time => time - 1);
-        } else if (builderTime === 0 && breakerTime > 0) {
-          // Switch to breaker when builder time is up
-          setActiveRole('breaker');
-        } else if (breakerTime === 0 && builderTime > 0) {
-          // Switch to builder when breaker time is up
-          setActiveRole('builder');
-        } else {
-          // Stop debate when both timers are up
-          clearInterval(interval);
+    if (leaderRef.current && startedRef.current && activeRoleRef.current && !pausedRef.current) {
+      if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
+      tickIntervalRef.current = setInterval(() => {
+        const role = activeRoleRef.current;
+        if (role === 'builder') {
+          if (builderTimeRef.current > 0) builderTimeRef.current -= 1;
+          else if (breakerTimeRef.current > 0) {
+            activeRoleRef.current = 'breaker';
+            broadcast('role_update', { role: 'breaker' });
+          }
+        } else if (role === 'breaker') {
+          if (breakerTimeRef.current > 0) breakerTimeRef.current -= 1;
+          else if (builderTimeRef.current > 0) {
+            activeRoleRef.current = 'builder';
+            broadcast('role_update', { role: 'builder' });
+          }
+        }
+
+        // reflect locally
+        setBuilderTime(builderTimeRef.current);
+        setBreakerTime(breakerTimeRef.current);
+        setActiveRole(activeRoleRef.current);
+
+        // broadcast authoritative tick
+        broadcast('tick', {
+          builderTime: builderTimeRef.current,
+          breakerTime: breakerTimeRef.current,
+          activeRole: activeRoleRef.current,
+        });
+
+        if (builderTimeRef.current <= 0 && breakerTimeRef.current <= 0) {
+          if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
+          tickIntervalRef.current = null;
+          leaderRef.current = false;
           setIsDebateStarted(false);
           setActiveRole(null);
+          broadcast('start_stop', { started: false });
           stopRecording();
         }
       }, 1000);
+      return () => { if (tickIntervalRef.current) { clearInterval(tickIntervalRef.current); tickIntervalRef.current = null; } };
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isDebateStarted, activeRole, builderTime, breakerTime]);
+    // when not leader, ensure no local interval stays around
+    if (tickIntervalRef.current) { clearInterval(tickIntervalRef.current); tickIntervalRef.current = null; }
+  }, [isDebateStarted, activeRole, isPaused]);
 
   // Initialize recording
   const startRecording = async () => {
@@ -188,17 +392,45 @@ const DebateTournament: React.FC = () => {
 
       recorder.onstop = () => {
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        const localUrl = URL.createObjectURL(audioBlob);
         const newRecording = {
           id: Date.now().toString(),
-          url: audioUrl,
+          url: localUrl,
           timestamp: new Date(),
           role: activeRole || 'builder'
         };
 
+        (async () => {
+          try {
+            setUploading(true);
+            const ts = newRecording.timestamp.toISOString().replace(/[:.]/g, '-');
+            const path = `${currentDebate?.id || 'debate'}/${newRecording.role}-${ts}.webm`;
+            const { error: uploadError } = await supabase
+              .storage
+              .from(SUPABASE_BUCKET)
+              .upload(path, audioBlob, { contentType: 'audio/webm', upsert: true });
+            if (uploadError) {
+              console.warn('Upload to Supabase failed:', uploadError.message);
+            } else {
+              const { data: pub } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(path);
+              if (pub?.publicUrl) {
+                newRecording.url = pub.publicUrl;
+              }
+            }
+          } catch (e) {
+            console.warn('Upload error:', e);
+          } finally {
+            setUploading(false);
+          }
+        })();
+
         // Update live debates
         setLiveDebates(prev => {
-          const existingDebateIndex = prev.findIndex(d => d.topic === currentDebate.topic);
+          const topic = currentDebate?.topic || 'Debate';
+          const builderChar = currentDebate?.builderCharacter || 'Builder';
+          const breakerChar = currentDebate?.breakerCharacter || 'Breaker';
+          const durationStr = String(currentDebate?.duration ?? 0);
+          const existingDebateIndex = prev.findIndex(d => d.topic === topic);
           if (existingDebateIndex >= 0) {
             // Update existing debate
             const updatedDebates = [...prev];
@@ -211,11 +443,11 @@ const DebateTournament: React.FC = () => {
             // Create new debate entry
             return [...prev, {
               id: Date.now().toString(),
-              topic: currentDebate.topic,
+              topic,
               timestamp: new Date(),
-              builderCharacter: currentDebate.builderCharacter,
-              breakerCharacter: currentDebate.breakerCharacter,
-              duration: currentDebate.duration,
+              builderCharacter: builderChar,
+              breakerCharacter: breakerChar,
+              duration: durationStr,
               recordings: [newRecording]
             }];
           }
@@ -248,7 +480,7 @@ const DebateTournament: React.FC = () => {
   };
 
   // Emoji picker component
-  const EmojiPicker = ({ messageId, onEmojiSelect }: { messageId: string; onEmojiSelect: (emoji: string) => void }) => {
+  const EmojiPicker = ({ messageId, onEmojiSelect }: { messageId: string; onEmojiSelect: (msgId: string, emoji: string) => void }) => {
     const emojis = ['👍', '❤️', '😂', '😮', '😢', '😡', '👏', '🎉', '🔥', '💯', '🤔', '👀'];
     
          return (
@@ -257,7 +489,7 @@ const DebateTournament: React.FC = () => {
           {emojis.map((emoji) => (
             <button
               key={emoji}
-              onClick={() => onEmojiSelect(emoji)}
+              onClick={() => onEmojiSelect(messageId, emoji)}
               className="w-8 h-8 text-xl hover:bg-white/20 rounded-lg transition-colors duration-200 flex items-center justify-center"
             >
               {emoji}
@@ -275,7 +507,7 @@ const DebateTournament: React.FC = () => {
         const existingReaction = msg.reactions?.find(r => r.emoji === emoji);
         if (existingReaction) {
           // If user already reacted, remove their reaction
-          const userIndex = existingReaction.users.indexOf(currentDebate.builderCharacter);
+          const userIndex = existingReaction.users.indexOf(currentDebate?.builderCharacter || 'User');
           if (userIndex > -1) {
             existingReaction.users.splice(userIndex, 1);
             existingReaction.count--;
@@ -287,7 +519,7 @@ const DebateTournament: React.FC = () => {
             }
           } else {
             // Add user reaction
-            existingReaction.users.push(currentDebate.builderCharacter);
+            existingReaction.users.push(currentDebate?.builderCharacter || 'User');
             existingReaction.count++;
           }
         } else {
@@ -295,7 +527,7 @@ const DebateTournament: React.FC = () => {
           const newReaction = {
             emoji,
             count: 1,
-            users: [currentDebate.builderCharacter]
+            users: [currentDebate?.builderCharacter || 'User']
           };
           return {
             ...msg,
@@ -346,6 +578,7 @@ const DebateTournament: React.FC = () => {
             <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">Live Now</span>
             <span className="text-sm">{currentDebate.duration} minutes</span>
             <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">{currentDebate.debateStyle}</span>
+            <span className="text-sm">Participants: {participants}</span>
           </div>
 
           {/* Participants Panel */}
@@ -364,7 +597,11 @@ const DebateTournament: React.FC = () => {
                 </div>
                 <div className="bg-purple-500/30 rounded-lg p-3">
                   <div className="text-sm text-purple-300 mb-1">Points</div>
-                  <div className="text-2xl font-bold text-white">0</div>
+                  <div className="text-2xl font-bold text-white">{builderScore}</div>
+                  <div className="mt-2 flex gap-2 justify-center">
+                    <button onClick={() => { const v = builderScore + 1; setBuilderScore(v); broadcast('score_update', { side: 'builder', value: v }); }} className="px-2 py-1 bg-white/20 rounded">+1</button>
+                    <button onClick={() => { const v = Math.max(0, builderScore - 1); setBuilderScore(v); broadcast('score_update', { side: 'builder', value: v }); }} className="px-2 py-1 bg-white/20 rounded">-1</button>
+                  </div>
                 </div>
               </div>
 
@@ -429,7 +666,11 @@ const DebateTournament: React.FC = () => {
                 </div>
                 <div className="bg-blue-500/30 rounded-lg p-3">
                   <div className="text-sm text-blue-300 mb-1">Points</div>
-                  <div className="text-2xl font-bold text-white">0</div>
+                  <div className="text-2xl font-bold text-white">{breakerScore}</div>
+                  <div className="mt-2 flex gap-2 justify-center">
+                    <button onClick={() => { const v = breakerScore + 1; setBreakerScore(v); broadcast('score_update', { side: 'breaker', value: v }); }} className="px-2 py-1 bg-white/20 rounded">+1</button>
+                    <button onClick={() => { const v = Math.max(0, breakerScore - 1); setBreakerScore(v); broadcast('score_update', { side: 'breaker', value: v }); }} className="px-2 py-1 bg-white/20 rounded">-1</button>
+                  </div>
                 </div>
               </div>
 
@@ -449,21 +690,57 @@ const DebateTournament: React.FC = () => {
             <button 
               onClick={() => {
                 if (!isDebateStarted) {
+                  // Ensure timers are initialized on start (guard against 0)
+                  const half = Math.max(30, Math.floor((currentDebate?.duration || 2) * 30));
+                  if (builderTimeRef.current <= 0 || breakerTimeRef.current <= 0) {
+                    setBuilderTime(half);
+                    setBreakerTime(half);
+                    builderTimeRef.current = half;
+                    breakerTimeRef.current = half;
+                  }
                   setIsDebateStarted(true);
                   setActiveRole('builder');
+                  activeRoleRef.current = 'builder';
+                  leaderRef.current = true; // this tab becomes authoritative ticker
+                  broadcast('start_stop', { started: true });
+                  broadcast('role_update', { role: 'builder' });
                   startRecording();
+                } else {
+                  // Toggle pause/resume
+                  const nextPaused = !isPaused;
+                  setIsPaused(nextPaused);
+                  broadcast('pause_state', { paused: nextPaused });
                 }
               }}
-              disabled={isDebateStarted}
               className={`w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 px-8 rounded-xl font-semibold text-lg transition-all duration-300 flex items-center justify-center space-x-3 ${
-                isDebateStarted 
-                  ? 'opacity-90 cursor-not-allowed'
+                isDebateStarted
+                  ? (isPaused ? 'bg-yellow-600 hover:bg-yellow-700' : 'opacity-90')
                   : 'hover:from-green-700 hover:to-emerald-700 transform hover:scale-105'
               }`}
             >
               <MessageSquare className="w-6 h-6" />
-              <span>{isDebateStarted ? 'Debate in Progress' : 'Start Debate'}</span>
+              <span>{!isDebateStarted ? 'Start Debate' : (isPaused ? 'Resume' : 'Pause')}</span>
             </button>
+
+            {isDebateStarted && (
+              <button
+                onClick={() => {
+                  setIsDebateStarted(false);
+                  setIsPaused(false);
+                  setActiveRole(null);
+                  builderTimeRef.current = 0;
+                  breakerTimeRef.current = 0;
+                  setBuilderTime(0);
+                  setBreakerTime(0);
+                  leaderRef.current = false;
+                  broadcast('start_stop', { started: false });
+                  stopRecording();
+                }}
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-6 rounded-xl font-semibold"
+              >
+                Stop Debate
+              </button>
+            )}
 
             {/* Recording Controls */}
             {isDebateStarted && (
@@ -502,6 +779,45 @@ const DebateTournament: React.FC = () => {
                     <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Generate Audio Summary */}
+            {!isDebateStarted && (
+              <div className="w-full flex flex-col items-center gap-3">
+                <button
+                  onClick={async () => {
+                    const keyPoints = `Debate on ${currentDebate?.topic}. Builder score ${builderScore}, Breaker score ${breakerScore}. Key takeaways: clear arguments, counterpoints, and conclusion.`;
+                    const tts = await generateElevenLabsSpeech(keyPoints);
+                    if (tts) {
+                      setSummaryAudioUrl(tts.url);
+                      // Upload to Supabase Storage (best-effort)
+                      try {
+                        setSummaryUploading(true);
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                        const path = `${currentDebate?.id || 'debate'}/summary-${ts}.mp3`;
+                        const { error } = await supabase.storage.from(SUMMARY_BUCKET).upload(path, tts.blob, { contentType: 'audio/mpeg', upsert: true });
+                        if (!error) {
+                          // Optionally get public URL
+                          const { data } = supabase.storage.from(SUMMARY_BUCKET).getPublicUrl(path);
+                          if (data?.publicUrl) setSummaryAudioUrl(data.publicUrl);
+                        }
+                      } finally {
+                        setSummaryUploading(false);
+                      }
+                    } else {
+                      speakWithBrowser(keyPoints);
+                    }
+                  }}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-3 rounded-xl font-semibold"
+                >
+                  {summaryUploading ? 'Uploading summary...' : 'Generate Audio Summary'}
+                </button>
+
+
+                {summaryAudioUrl && (
+                  <audio controls src={summaryAudioUrl} className="w-full" />
+                )}
               </div>
             )}
           </div>
@@ -629,22 +945,28 @@ const DebateTournament: React.FC = () => {
                      
                      {/* Emoji Reactions */}
                      {msg.reactions && msg.reactions.length > 0 && (
-                       <div className="flex flex-wrap gap-1 mt-2">
-                         {msg.reactions.map((reaction, index) => (
-                           <button
-                             key={index}
-                             onClick={() => handleEmojiReaction(msg.id, reaction.emoji)}
-                             className={`px-2 py-1 rounded-full text-xs transition-all duration-200 ${
-                               reaction.users.includes(currentDebate.builderCharacter)
-                                 ? 'bg-white/30 text-white'
-                                 : 'bg-white/10 text-white/70 hover:bg-white/20'
-                             }`}
-                           >
-                             {reaction.emoji} {reaction.count}
-                           </button>
-                         ))}
-                       </div>
-                     )}
+                        <div className="flex flex-wrap gap-1 mt-2 overflow-visible">
+                          {msg.reactions.map((reaction, index) => (
+                            <div key={index} className="relative group inline-block">
+                              <button
+                                onClick={() => handleEmojiReaction(msg.id, reaction.emoji)}
+                                title={`${reaction.emoji} • ${reaction.users.join(', ') || 'You'}`}
+                                aria-label={`${reaction.emoji} reacted by ${reaction.users.join(', ') || 'You'}`}
+                                className={`peer px-2 py-1 rounded-full text-xs transition-all duration-200 ${
+                                  reaction.users.includes(currentDebate?.builderCharacter || '')
+                                    ? 'bg-white/30 text-white'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {reaction.emoji} {reaction.count}
+                              </button>
+                              <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/80 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 peer-hover:opacity-100 z-50">
+                                {reaction.users.length ? reaction.users.join(', ') : 'You'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                      
                      {/* Add Reaction Button */}
                      <button
@@ -656,10 +978,21 @@ const DebateTournament: React.FC = () => {
                      
                      {/* Emoji Picker */}
                      {showEmojiPicker === msg.id && (
-                       <EmojiPicker
-                         messageId={msg.id}
-                         onEmojiSelect={handleEmojiReaction}
-                       />
+                       <div className="emoji-picker-container absolute bottom-full right-0 mb-2 z-10">
+                         <EmojiPickerLib
+                           onEmojiClick={(emojiData: any) => {
+                             const emoji = emojiData.emoji;
+                             handleEmojiReaction(msg.id, emoji);
+                             setShowEmojiPicker(null);
+                             channelRef.current?.send({ type: 'broadcast', event: 'reaction', payload: { messageId: msg.id, emoji, user: fullName || 'User' } });
+                           }}
+                           lazyLoadEmojis
+                           skinTonesDisabled
+                           searchDisabled
+                           previewConfig={{ showPreview: false }}
+                           width={300}
+                         />
+                       </div>
                      )}
                    </div>
                  </div>
@@ -674,17 +1007,19 @@ const DebateTournament: React.FC = () => {
                 e.preventDefault();
                 if (!message.trim()) return;
 
-                                 const newMessage = {
-                   id: Date.now().toString(),
-                   text: message.trim(),
-                   timestamp: new Date(),
-                   sender: currentDebate.builderCharacter,
-                   reactions: []
-                 };
+                const newMessage = {
+                  id: Date.now().toString(),
+                  text: message.trim(),
+                  timestamp: new Date(),
+                  sender: currentDebate?.builderCharacter || 'User',
+                  reactions: [] as any[],
+                };
 
                 const updatedMessages = [...messages, newMessage];
                 setMessages(updatedMessages);
                 localStorage.setItem('chatMessages', JSON.stringify(updatedMessages));
+                // broadcast to room
+                channelRef.current?.send({ type: 'broadcast', event: 'chat_message', payload: newMessage });
                 setMessage('');
               }}
               className="flex space-x-4"
@@ -766,10 +1101,10 @@ const DebateTournament: React.FC = () => {
 
       <div className="flex justify-center pt-8 px-4">
         <div className="flex gap-4 bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-2">
-          {[
-            { id: 'live', label: 'Live Debates', icon: Users },
-            { id: 'chat', label: 'Chat Debates', icon: MessageSquare }
-          ].map((tab) => (
+          {([
+            { id: 'live' as const, label: 'Live Debates', icon: Users },
+            { id: 'chat' as const, label: 'Chat Debates', icon: MessageSquare }
+          ]).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
