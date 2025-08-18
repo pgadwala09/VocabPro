@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Brain, LogOut, User, Settings, BookOpen, Mic, BarChart3, Trophy, Sparkles, File, FileText, Music, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,31 @@ interface DashboardProps {
 function Dashboard({ onLogout, libraryItems }: DashboardProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  type RecentWord = { id: number; word: string; createdAt: string };
+  type RecentRecording = { id: number; word: string; url: string; createdAt: string };
+  const [recentWords, setRecentWords] = useState<RecentWord[]>([]);
+  const [recentRecordings, setRecentRecordings] = useState<RecentRecording[]>([]);
+
+  useEffect(() => {
+    try {
+      const w = JSON.parse(localStorage.getItem('recentWords') || '[]');
+      if (Array.isArray(w)) setRecentWords(w);
+    } catch {}
+    try {
+      const r = JSON.parse(localStorage.getItem('recentRecordings') || '[]');
+      if (Array.isArray(r)) setRecentRecordings(r);
+    } catch {}
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'recentWords') {
+        try { const w = JSON.parse(e.newValue || '[]'); if (Array.isArray(w)) setRecentWords(w); } catch {}
+      }
+      if (e.key === 'recentRecordings') {
+        try { const r = JSON.parse(e.newValue || '[]'); if (Array.isArray(r)) setRecentRecordings(r); } catch {}
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const groupByType = (items: LibraryItem[]) => {
     return {
@@ -126,15 +151,18 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
             </button>
           </div>
 
-          {/* Progress Tracking */}
+          {/* Debates */}
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-indigo-400/50 transition-all duration-300 transform hover:-translate-y-2">
             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center mb-4">
               <BarChart3 className="w-6 h-6 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Progress</h3>
-            <p className="text-gray-300 mb-4">Track your learning journey</p>
-            <button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-semibold transition-all duration-300">
-              View Stats
+            <h3 className="text-xl font-bold text-white mb-2">Debates</h3>
+            <p className="text-gray-300 mb-4">A way to become an efficient speaker</p>
+            <button 
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+              onClick={() => navigate('/debates')}
+            >
+              Practice Debate
             </button>
           </div>
 
@@ -175,6 +203,48 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Practice Activity (Synced) */}
+        <section className="w-full max-w-6xl bg-white/90 rounded-2xl shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-purple-900 mb-6">Practice Activity</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            {/* Words list */}
+            <div>
+              <h3 className="text-lg font-semibold text-blue-700 mb-3">Words</h3>
+              <ul className="flex flex-col gap-3">
+                {recentWords.length > 0 ? (
+                  recentWords.slice(0, 10).map((w) => (
+                    <li key={w.id} className="flex items-center justify-between bg-white rounded-lg shadow p-3">
+                      <span className="font-semibold text-gray-800">{w.word}</span>
+                      <span className="text-xs text-gray-500">{new Date(w.createdAt).toLocaleString()}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-gray-400 text-sm">No recent words.</li>
+                )}
+              </ul>
+            </div>
+            {/* Recordings list */}
+            <div>
+              <h3 className="text-lg font-semibold text-blue-700 mb-3">Recordings</h3>
+              <ul className="flex flex-col gap-3">
+                {recentRecordings.length > 0 ? (
+                  recentRecordings.slice(0, 10).map((r) => (
+                    <li key={r.id} className="bg-white rounded-lg shadow p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-gray-800">{r.word || 'Recording'}</span>
+                        <span className="text-xs text-gray-500">{new Date(r.createdAt).toLocaleString()}</span>
+                      </div>
+                      <audio controls src={r.url} className="w-full" />
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-gray-400 text-sm">No recent recordings.</li>
+                )}
+              </ul>
+            </div>
           </div>
         </section>
       </main>
