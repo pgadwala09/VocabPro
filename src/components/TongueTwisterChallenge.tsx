@@ -44,7 +44,11 @@ function generateRandomTwister(): string {
   return `${adj.charAt(0).toUpperCase() + adj.slice(1)} ${chosen[0]} and ${chosen[1]} ${adv} ${verb} with ${chosen[2]}!`;
 }
 
-const TongueTwisterChallenge: React.FC = () => {
+interface TongueTwisterChallengeProps {
+  compact?: boolean;
+}
+
+const TongueTwisterChallenge: React.FC<TongueTwisterChallengeProps> = ({ compact = false }) => {
   const { vocabList } = useVocabulary();
   const { addFeedback } = useFeedback();
   const [twister, setTwister] = useState('');
@@ -185,67 +189,67 @@ const TongueTwisterChallenge: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center bg-transparent pt-0 pb-12 px-4">
-      <div className="flex flex-col items-center justify-start w-[650px] h-[440px] bg-gradient-to-br from-purple-800 via-blue-800 to-blue-700 border-2 border-white rounded-2xl p-0 relative mb-6 mt-2" style={{boxShadow: '0 4px 40px 0 rgba(0,0,0,0.15)'}}>
-        <div className="w-full flex flex-col items-center px-10 py-6 h-full overflow-y-auto">
-          <h1 className="text-4xl font-bold text-white text-center mb-6 drop-shadow">Tongue Twister Challenge</h1>
-          {/* Twister Source Toggle */}
-          <div className="flex justify-center mb-4 w-full">
-            <select
-              className="px-4 py-2 rounded-lg bg-white/80 text-purple-900 font-semibold shadow focus:outline-none"
-              value={twisterSource}
-              onChange={e => setTwisterSource(e.target.value as 'vocab' | 'random')}
-            >
-              <option value="vocab">Use My Vocabulary</option>
-              <option value="random">AI/Random Words</option>
-            </select>
-          </div>
-          {/* Scoreboard Modal */}
-          {showScoreboard && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-              <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg relative">
-                <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={() => setShowScoreboard(false)}><X className="w-6 h-6" /></button>
-                <h2 className="text-2xl font-bold text-purple-800 mb-4 text-center">My Best Scoreboard</h2>
-                {scoreboard.length === 0 ? (
-                  <div className="text-center text-gray-500">No attempts yet. Record a challenge to see your scores!</div>
-                ) : (
-                  <div className="max-h-96 overflow-y-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="text-purple-700">
-                          <th className="py-2 px-2">Clarity</th>
-                          <th className="py-2 px-2">Twister</th>
-                          <th className="py-2 px-2">Feedback</th>
-                          <th className="py-2 px-2">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {scoreboard
-                          .sort((a, b) => b.clarity - a.clarity)
-                          .map((item, idx) => (
-                            <tr key={idx} className="border-b border-gray-200">
-                              <td className="py-1 px-2 font-bold text-green-700">{item.clarity}%</td>
-                              <td className="py-1 px-2 text-sm text-gray-800 max-w-[120px] truncate">{item.twister}</td>
-                              <td className="py-1 px-2 text-xs text-gray-600 max-w-[120px] truncate">{item.feedback}</td>
-                              <td className="py-1 px-2 text-xs text-gray-500">{item.date}</td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+    <div className={compact ? "flex flex-col items-center justify-center w-full h-full" : "min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-700 via-pink-500 to-pink-300 py-12 px-4"}>
+      <div className={compact ? "w-full h-full flex flex-col items-center justify-center p-0 m-0" : "w-full max-w-xl mx-auto"} style={compact ? { maxWidth: 500, maxHeight: 340 } : {}}>
+        <h1 className={compact ? "text-2xl font-bold text-white text-center mb-2" : "text-4xl font-bold text-white text-center mb-8 drop-shadow"}>Tongue Twister Challenge</h1>
+        {/* Twister Source Toggle */}
+        <div className={compact ? "flex justify-center mb-2" : "flex justify-center mb-6"}>
+          <select
+            className="px-4 py-2 rounded-lg bg-white/80 text-purple-900 font-semibold shadow focus:outline-none"
+            value={twisterSource}
+            onChange={e => setTwisterSource(e.target.value as 'vocab' | 'random')}
+          >
+            <option value="vocab">Use My Vocabulary</option>
+            <option value="random">AI/Random Words</option>
+          </select>
+        </div>
+        {/* Scoreboard Modal */}
+        {showScoreboard && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg relative">
+              <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={() => setShowScoreboard(false)}><X className="w-6 h-6" /></button>
+              <h2 className="text-2xl font-bold text-purple-800 mb-4 text-center">My Best Scoreboard</h2>
+              {scoreboard.length === 0 ? (
+                <div className="text-center text-gray-500">No attempts yet. Record a challenge to see your scores!</div>
+              ) : (
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="text-purple-700">
+                        <th className="py-2 px-2">Clarity</th>
+                        <th className="py-2 px-2">Twister</th>
+                        <th className="py-2 px-2">Feedback</th>
+                        <th className="py-2 px-2">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scoreboard
+                        .sort((a, b) => b.clarity - a.clarity)
+                        .map((item, idx) => (
+                          <tr key={idx} className="border-b border-gray-200">
+                            <td className="py-1 px-2 font-bold text-green-700">{item.clarity}%</td>
+                            <td className="py-1 px-2 text-sm text-gray-800 max-w-[120px] truncate">{item.twister}</td>
+                            <td className="py-1 px-2 text-xs text-gray-600 max-w-[120px] truncate">{item.feedback}</td>
+                            <td className="py-1 px-2 text-xs text-gray-500">{item.date}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        )}
+        <div className={compact ? "bg-white/5 rounded-2xl shadow flex flex-col items-center w-full h-full p-2" : "bg-white/10 rounded-3xl shadow-2xl p-8 flex flex-col items-center"}>
           {/* Twister Text */}
-          <div className="text-2xl font-bold text-white text-center mb-4">{twister}</div>
+          <div className={compact ? "text-lg font-bold text-white text-center mb-2" : "text-2xl font-bold text-white text-center mb-4"}>{twister}</div>
           {/* Timer */}
-          <div className="flex flex-col items-center mb-4">
-            <span className="text-white font-semibold text-lg mb-1">Time Left</span>
-            <span className="text-3xl font-mono text-pink-200">{timer}s</span>
+          <div className={compact ? "flex items-center gap-2 mb-2" : "flex items-center gap-2 mb-4"}>
+            <span className="text-white font-semibold">Time Left:</span>
+            <span className="text-2xl font-mono text-pink-200">{timer}s</span>
           </div>
           {/* Clarity Meter */}
-          <div className="w-full max-w-md mb-4">
+          <div className={compact ? "w-full max-w-xs mb-2" : "w-full max-w-xs mb-4"}>
             <div className="flex justify-between text-xs text-white mb-1">
               <span>Clarity</span>
               <span>{clarity}%</span>
@@ -255,52 +259,51 @@ const TongueTwisterChallenge: React.FC = () => {
             </div>
           </div>
           {/* Record/Stop Button */}
-          <div className="flex flex-col items-center mb-4">
-            {!isRecording ? (
-              <button
-                className="px-10 py-4 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600 mb-2"
-                onClick={handleStartChallenge}
-              >
-                <Mic className="w-6 h-6" /> Start Challenge
-              </button>
-            ) : (
-              <button
-                className="px-10 py-4 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-red-500 text-white mb-2"
-                onClick={handleStopRecording}
-              >
-                <StopCircle className="w-6 h-6" /> Stop
-              </button>
-            )}
-            {/* Playback Button */}
-            {recordedUrl && !isRecording && (
-              <button
-                className="bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"
-                onClick={handlePlayRecording}
-                title="Play Your Recording"
-              >
-                <Play className="w-8 h-8 text-white" />
-                <audio ref={audioPlaybackRef} src={recordedUrl} />
-              </button>
-            )}
-          </div>
+          {!isRecording ? (
+            <button
+              className={compact ? "mt-2 px-6 py-2 rounded-full font-bold text-base shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600" : "mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600"}
+              onClick={handleStartChallenge}
+            >
+              <Mic className="w-5 h-5" /> Start Challenge
+            </button>
+          ) : (
+            <button
+              className={compact ? "mt-2 px-6 py-2 rounded-full font-bold text-base shadow flex items-center gap-2 bg-red-500 text-white" : "mt-4 px-8 py-3 rounded-full font-bold text-lg shadow flex items-center gap-2 bg-red-500 text-white"}
+              onClick={handleStopRecording}
+            >
+              <StopCircle className="w-5 h-5" /> Stop
+            </button>
+          )}
+          {/* Playback Button */}
+          {recordedUrl && !isRecording && (
+            <button
+              className={compact ? "bg-green-500 hover:bg-green-600 rounded-full w-12 h-12 flex items-center justify-center shadow-lg mt-2" : "bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"}
+              onClick={handlePlayRecording}
+              title="Play Your Recording"
+            >
+              <Play className={compact ? "w-6 h-6 text-white" : "w-8 h-8 text-white"} />
+              <audio ref={audioPlaybackRef} src={recordedUrl} />
+            </button>
+          )}
           {/* Feedback */}
           {showFeedback && (
-            <div className="mt-2 text-white text-center bg-white/10 rounded-xl p-4 w-full">
+            <div className={compact ? "mt-2 text-white text-center bg-white/10 rounded-xl p-2 w-full" : "mt-6 text-white text-center bg-white/10 rounded-xl p-4 w-full"}>
               <div className="font-semibold mb-2">AI Feedback</div>
               <div>{feedback}</div>
             </div>
           )}
           {/* Retry & Share Buttons */}
-          <div className="flex gap-6 mt-4 w-full justify-center">
-            <button className="px-6 py-2 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2" onClick={handleNewTwister}>
+          <div className={compact ? "flex gap-2 mt-2" : "flex gap-4 mt-6"}>
+            <button className={compact ? "px-4 py-1 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2 text-sm" : "px-6 py-2 bg-purple-500 text-white rounded-lg font-semibold shadow hover:bg-purple-600 flex items-center gap-2"} onClick={handleNewTwister}>
               <RefreshCw className="w-5 h-5" /> Try New Twister
             </button>
-            <button className="px-6 py-2 bg-pink-500 text-white rounded-lg font-semibold shadow hover:bg-pink-600 flex items-center gap-2" onClick={() => {/* share logic */}}>
+            <button className={compact ? "px-4 py-1 bg-pink-500 text-white rounded-lg font-semibold shadow hover:bg-pink-600 flex items-center gap-2 text-sm" : "px-6 py-2 bg-pink-500 text-white rounded-lg font-semibold shadow hover:bg-pink-600 flex items-center gap-2"} onClick={() => {/* share logic */}}>
               <Share2 className="w-5 h-5" /> Share
             </button>
           </div>
-          {/* Footer Buttons */}
-          <div className="flex justify-between mt-4 gap-4 w-full">
+        </div>
+        {!compact && (
+          <div className="flex justify-between mt-8 gap-4">
             <button className="flex-1 px-4 py-3 bg-white/20 text-white rounded-lg font-semibold shadow hover:bg-white/30 flex items-center gap-2 justify-center" onClick={handleNewTwister}>
               <RefreshCw className="w-5 h-5" /> Try New Twister
             </button>
@@ -311,7 +314,7 @@ const TongueTwisterChallenge: React.FC = () => {
               <Users className="w-5 h-5" /> Challenge a Friend
             </button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

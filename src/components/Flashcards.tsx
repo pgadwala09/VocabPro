@@ -17,7 +17,11 @@ const getWordEmoji = (word: string) => {
   return '🃏';
 };
 
-const Flashcards: React.FC = () => {
+interface FlashcardsProps {
+  compact?: boolean;
+}
+
+const Flashcards: React.FC<FlashcardsProps> = ({ compact = false }) => {
   const { vocabList } = useVocabulary();
   const [current, setCurrent] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -53,7 +57,7 @@ const Flashcards: React.FC = () => {
 
   if (!cards.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-100 via-blue-200 to-purple-100 flex flex-col items-center justify-center">
+      <div className={compact ? "flex flex-col items-center justify-center w-full h-full" : "min-h-screen bg-gradient-to-br from-blue-100 via-blue-200 to-purple-100 flex flex-col items-center justify-center"}>
         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md flex flex-col items-center">
           {/* Mode Switch */}
           <div className="flex gap-4 mb-6">
@@ -133,10 +137,16 @@ const Flashcards: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-blue-200 to-purple-100 flex flex-col items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md flex flex-col items-center">
+    <div className={compact ? "flex flex-col items-center justify-center w-full h-full" : "min-h-screen bg-gradient-to-br from-blue-100 via-blue-200 to-purple-100 flex flex-col items-center justify-center"}>
+      <div
+        className={compact
+          ? "w-full h-full flex flex-col items-center justify-center bg-transparent flex-1"
+          : "bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md flex flex-col items-center"
+        }
+        style={compact ? { maxWidth: 500, maxHeight: 340, width: '100%', height: '100%', boxShadow: 'none', borderRadius: 0, background: 'transparent', padding: 0 } : {}}
+      >
         {/* Mode Switch */}
-        <div className="flex gap-4 mb-6">
+        <div className={compact ? "flex gap-4 mb-2 mt-0" : "flex gap-4 mb-6"}>
           <button onClick={() => setMode('vocab')} className={`px-4 py-2 rounded-lg font-bold ${mode === 'vocab' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-900'}`}>My Vocabulary</button>
           <button onClick={() => setMode('custom')} className={`px-4 py-2 rounded-lg font-bold ${mode === 'custom' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-900'}`}>Custom Words</button>
         </div>
@@ -153,65 +163,63 @@ const Flashcards: React.FC = () => {
           </div>
         )}
         {/* Navigation */}
-        <div className="flex justify-between w-full mb-4">
+        <div className={compact ? "flex justify-between w-full mb-1" : "flex justify-between w-full mb-4"}>
           <button onClick={handlePrev} className="text-blue-700 font-bold flex items-center gap-1 hover:underline"><ArrowLeft className="w-5 h-5" />Prev</button>
           <span className="text-blue-900 font-semibold">{current + 1} / {cards.length}</span>
           <button onClick={handleNext} className="text-blue-700 font-bold flex items-center gap-1 hover:underline">Next<ArrowRight className="w-5 h-5" /></button>
         </div>
         {/* Flashcard front/back */}
         {!isFlipped ? (
-          <div className="flex flex-col items-center w-full">
-            <div className="text-2xl font-bold text-blue-900 mb-2 text-center">{flashcard.word}</div>
+          <div className="flex flex-col items-center justify-center w-full h-full flex-1">
+            <div className={compact ? "text-3xl font-bold text-blue-900 mb-2 text-center" : "text-2xl font-bold text-blue-900 mb-2 text-center"}>{flashcard.word}</div>
             {/* Emoji/Icon */}
-            <div className="text-6xl mb-4">{emoji}</div>
+            <div className={compact ? "text-7xl mb-4" : "text-6xl mb-4"}>{emoji}</div>
             {/* Play button */}
-            <button className="bg-purple-500 hover:bg-purple-600 rounded-full w-14 h-14 flex items-center justify-center mb-4">
-              <Volume2 className="w-7 h-7 text-white" />
+            <button className={compact ? "bg-purple-500 hover:bg-purple-600 rounded-full w-16 h-16 flex items-center justify-center mb-4" : "bg-purple-500 hover:bg-purple-600 rounded-full w-14 h-14 flex items-center justify-center mb-4"}>
+              <Volume2 className={compact ? "w-8 h-8 text-white" : "w-7 h-7 text-white"} />
             </button>
             {/* Flip button */}
-            <button className="flex items-center gap-2 text-blue-700 font-semibold mt-2" onClick={() => setIsFlipped(true)}>
+            <button className={compact ? "flex items-center gap-2 text-blue-700 font-semibold mt-2 text-lg" : "flex items-center gap-2 text-blue-700 font-semibold mt-2"} onClick={() => setIsFlipped(true)}>
               Tap to Flip <ArrowRight className="w-5 h-5" />
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full">
-            <div className="text-2xl font-bold text-blue-900 mb-2 text-center">{flashcard.word}</div>
-            <div className="text-base text-gray-800 mb-2 text-center">{flashcard.meaning}</div>
-            <div className="text-lg font-bold text-blue-900 mb-1 text-center">Sample Sentence</div>
-            <div className="text-base italic text-gray-700 mb-2 text-center">{flashcard.sentence}</div>
-            <div className="text-lg font-bold text-blue-900 mb-1 text-center">Speak &amp; Repeat Prompt</div>
-            <div className="text-base italic text-blue-700 mb-2 text-center">Now try saying it aloud</div>
+          <div className="flex flex-col items-center justify-center w-full h-full flex-1">
+            <div className={compact ? "text-3xl font-bold text-blue-900 mb-2 text-center" : "text-2xl font-bold text-blue-900 mb-2 text-center"}>{flashcard.word}</div>
+            <div className={compact ? "text-lg text-gray-800 mb-2 text-center" : "text-base text-gray-800 mb-2 text-center"}>{flashcard.meaning}</div>
+            <div className={compact ? "text-xl font-bold text-blue-900 mb-1 text-center" : "text-lg font-bold text-blue-900 mb-1 text-center"}>Sample Sentence</div>
+            <div className={compact ? "text-base italic text-gray-700 mb-2 text-center" : "text-base italic text-gray-700 mb-2 text-center"}>{flashcard.sentence}</div>
+            <div className={compact ? "text-lg font-bold text-blue-900 mb-1 text-center" : "text-lg font-bold text-blue-900 mb-1 text-center"}>Speak &amp; Repeat Prompt</div>
+            <div className={compact ? "text-base italic text-blue-700 mb-2 text-center" : "text-base italic text-blue-700 mb-2 text-center"}>Now try saying it aloud</div>
             {/* Option buttons with background */}
             <div className="flex flex-col items-center w-full mb-2">
-              <div className="flex gap-4 bg-gradient-to-br from-purple-100 to-blue-100 rounded-xl px-6 py-4 items-center justify-center">
+              <div className={compact ? "flex gap-4 bg-gradient-to-br from-purple-100 to-blue-100 rounded-xl px-8 py-5 items-center justify-center" : "flex gap-4 bg-gradient-to-br from-purple-100 to-blue-100 rounded-xl px-6 py-4 items-center justify-center"}>
                 {/* Listen again */}
-                <button className="bg-purple-500 hover:bg-purple-600 rounded-full w-12 h-12 flex items-center justify-center">
-                  <Volume2 className="w-6 h-6 text-white" />
+                <button className={compact ? "bg-purple-500 hover:bg-purple-600 rounded-full w-14 h-14 flex items-center justify-center" : "bg-purple-500 hover:bg-purple-600 rounded-full w-12 h-12 flex items-center justify-center"}>
+                  <Volume2 className={compact ? "w-7 h-7 text-white" : "w-6 h-6 text-white"} />
                 </button>
                 {/* Record button */}
                 {!isRecording ? (
-                  <button className="bg-blue-500 hover:bg-blue-600 rounded-full w-12 h-12 flex items-center justify-center" onClick={handleStartRecording}>
-                    <Mic className="w-6 h-6 text-white" />
+                  <button className={compact ? "bg-blue-500 hover:bg-blue-600 rounded-full w-14 h-14 flex items-center justify-center" : "bg-blue-500 hover:bg-blue-600 rounded-full w-12 h-12 flex items-center justify-center"} onClick={handleStartRecording}>
+                    <Mic className={compact ? "w-7 h-7 text-white" : "w-6 h-6 text-white"} />
                   </button>
                 ) : (
-                  <button className="bg-red-500 hover:bg-red-600 rounded-full w-12 h-12 flex items-center justify-center" onClick={handleStopRecording}>
-                    <Mic className="w-6 h-6 text-white animate-pulse" />
-                  </button>
-                )}
-                {/* Playback button for user's recording */}
-                {recordedUrl && (
-                  <button className="bg-green-500 hover:bg-green-600 rounded-full w-12 h-12 flex items-center justify-center" onClick={handlePlayRecording}>
-                    <Play className="w-6 h-6 text-white" />
-                    <audio ref={audioRef} src={recordedUrl} />
+                  <button className={compact ? "bg-red-500 hover:bg-red-600 rounded-full w-14 h-14 flex items-center justify-center" : "bg-red-500 hover:bg-red-600 rounded-full w-12 h-12 flex items-center justify-center"} onClick={handleStopRecording}>
+                    <Mic className={compact ? "w-7 h-7 text-white animate-pulse" : "w-6 h-6 text-white animate-pulse"} />
                   </button>
                 )}
               </div>
-              {isRecording && <div className="text-xs text-red-500 mt-2">Recording...</div>}
             </div>
-            {/* Flip back button */}
-            <button className="flex items-center gap-2 text-blue-700 font-semibold mt-2" onClick={() => setIsFlipped(false)}>
-              <ArrowLeft className="w-5 h-5" /> Back
-            </button>
+            {/* Play recording */}
+            {recordedUrl && (
+              <div className="flex flex-col items-center mt-2">
+                <button className={compact ? "bg-green-500 hover:bg-green-600 rounded-full w-14 h-14 flex items-center justify-center mb-2" : "bg-green-500 hover:bg-green-600 rounded-full w-12 h-12 flex items-center justify-center mb-2"} onClick={handlePlayRecording}>
+                  <Play className={compact ? "w-7 h-7 text-white" : "w-6 h-6 text-white"} />
+                  <audio ref={audioRef} src={recordedUrl} />
+                </button>
+                <span className="text-xs text-green-700">Listen to your recording</span>
+              </div>
+            )}
           </div>
         )}
       </div>

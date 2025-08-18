@@ -7,7 +7,6 @@ import { useAuth } from './hooks/useAuth';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import VocabPractice from './components/vocabpractice';
 import LandingPage from './components/LandingPage';
-import PronunciationPractice from './components/PronunciationPractice';
 import { RecordingProvider } from './hooks/RecordingContext';
 import Flashcards from './components/Flashcards';
 import { VocabularyProvider } from './hooks/VocabularyContext';
@@ -21,6 +20,8 @@ import SpellingPractice from './components/SpellingPractice';
 import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
 import DictationQuiz from './components/DictationQuiz';
 import ImageSpell from './components/ImageSpell';
+import PronunciationPractice from './components/PronunciationPractice';
+import JamSessions from './components/JamSessions';
 
 export interface LibraryItem {
   name: string;
@@ -168,6 +169,7 @@ function App() {
               <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
               <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
               <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
+              <Route path="/jamsessions" element={user ? <JamSessions /> : <Navigate to="/login" />} />
               <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
               <Route path="/spelling-practice" element={<SpellingPracticeTrainer />} />
               <Route path="/insights" element={<Insights />} />
