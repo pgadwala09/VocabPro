@@ -101,3 +101,4 @@ export const InsightsSingleCard = () => {
 };
 
 export default Insights; 
+

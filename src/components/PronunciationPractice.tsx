@@ -3,6 +3,29 @@ import { Play, Mic, StopCircle, X, Brain, Sparkles, Volume2, BookOpen, MessageSq
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 
+// Add interface for pronunciation feedback
+interface PronunciationFeedback {
+  word: string;
+  overallScore: number;
+  clarity: {
+    score: number;
+    feedback: string;
+  };
+  wordStress: {
+    score: number;
+    feedback: string;
+  };
+  pace: {
+    score: number;
+    feedback: string;
+  };
+  phonemeAccuracy: {
+    score: number;
+    feedback: string;
+  };
+  suggestions: string[];
+}
+
 const PronunciationPractice: React.FC = () => {
   const [activeTab, setActiveTab] = useState('pronunciation');
   const [isRecording, setIsRecording] = useState(false);
@@ -14,40 +37,18 @@ const PronunciationPractice: React.FC = () => {
   const audioChunks = useRef<Blob[]>([]);
   const [recordingWaveform, setRecordingWaveform] = useState<number[]>([]);
   const [originalWaveform, setOriginalWaveform] = useState<number[]>([]);
-  const [latestRecordedWord, setLatestRecordedWord] = useState<string>('Pronunciation');
+  const [latestRecordedWord, setLatestRecordedWord] = useState<string>('Apple');
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  
+  // Add pronunciation feedback state
+  const [pronunciationFeedback, setPronunciationFeedback] = useState<PronunciationFeedback | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-    };
-  }, []);
-
-  // Simulate getting the latest recorded word from the previous page
-  useEffect(() => {
-    // This would typically come from a context, localStorage, or API
-    // For now, we'll simulate it with a sample word
-    const getLatestWordFromPreviousPage = () => {
-      // Simulate getting the latest word from vocabulary practice
-      const sampleLatestWords = ['Ephemeral', 'Ubiquitous', 'Serendipity', 'Eloquent', 'Perseverance'];
-      const randomLatestWord = sampleLatestWords[Math.floor(Math.random() * sampleLatestWords.length)];
-      setLatestRecordedWord(randomLatestWord);
-    };
-    
-    getLatestWordFromPreviousPage();
-  }, []);
-  
   const avatarUrl = user?.user_metadata?.avatar_url;
   const fullName = user?.user_metadata?.full_name || user?.email || '';
   const initials = fullName
@@ -61,68 +62,68 @@ const PronunciationPractice: React.FC = () => {
     { word: 'Ubiquitous', meaning: 'Present everywhere', sentence: 'Smartphones have become ubiquitous in modern society.' },
     { word: 'Serendipity', meaning: 'Finding something good without looking for it', sentence: 'Meeting my best friend was pure serendipity.' }
   ];
-     const tongueTwisters = [
-     'Peter Piper picked a peck of pickled peppers.',
-     'She sells seashells by the seashore.',
-     'How much wood would a woodchuck chuck if a woodchuck could chuck wood?'
-   ];
-   
-   // Phoneme data for Sound Safari
-   const PHONEMES = [
-     {
-       symbol: "/s/",
-       tts: "s",
-       word: "snake",
-       phonemeAudio: "https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae7e2.mp3",
-       wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/snake--_gb_1.mp3",
-       hint: "S _ _ _ _ (a long, slithery reptile)",
-     },
-     {
-       symbol: "/th/",
-       tts: "th",
-       word: "thumb",
-       phonemeAudio: "https://cdn.pixabay.com/audio/2022/03/15/audio_115b9e7e2c.mp3",
-       wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/thumb--_gb_1.mp3",
-       hint: "T _ _ _ _ (a finger on your hand)",
-     },
-     {
-       symbol: "/ʃ/",
-       tts: "sh",
-       word: "shoe",
-       phonemeAudio: "https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae7e2.mp3",
-       wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/shoe--_gb_1.mp3",
-       hint: "S _ _ _ (you wear this on your foot)",
-     },
-     {
-       symbol: "/k/",
-       tts: "k",
-       word: "kite",
-       phonemeAudio: "https://cdn.pixabay.com/audio/2022/03/15/audio_115b9e7e2c.mp3",
-       wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/kite--_gb_1.mp3",
-       hint: "K _ _ _ (flies in the sky on a string)",
-     },
-   ];
+  const tongueTwisters = [
+    'Peter Piper picked a peck of pickled peppers.',
+    'She sells seashells by the seashore.',
+    'How much wood would a woodchuck chuck if a woodchuck could chuck wood?'
+  ];
+  
+  // Phoneme data for Sound Safari
+  const PHONEMES = [
+    {
+      symbol: "/s/",
+      tts: "s",
+      word: "snake",
+      phonemeAudio: "https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae7e2.mp3",
+      wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/snake--_gb_1.mp3",
+      hint: "S _ _ _ _ (a long, slithery reptile)",
+    },
+    {
+      symbol: "/th/",
+      tts: "th",
+      word: "thumb",
+      phonemeAudio: "https://cdn.pixabay.com/audio/2022/03/15/audio_115b9e7e2c.mp3",
+      wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/thumb--_gb_1.mp3",
+      hint: "T _ _ _ _ (a finger on your hand)",
+    },
+    {
+      symbol: "/ʃ/",
+      tts: "sh",
+      word: "shoe",
+      phonemeAudio: "https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae7e2.mp3",
+      wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/shoe--_gb_1.mp3",
+      hint: "S _ _ _ (you wear this on your foot)",
+    },
+    {
+      symbol: "/k/",
+      tts: "k",
+      word: "kite",
+      phonemeAudio: "https://cdn.pixabay.com/audio/2022/03/15/audio_115b9e7e2c.mp3",
+      wordAudio: "https://ssl.gstatic.com/dictionary/static/sounds/oxford/kite--_gb_1.mp3",
+      hint: "K _ _ _ (flies in the sky on a string)",
+    },
+  ];
 
-   const soundSafariData = [
-     { sound: 'Ocean Waves', description: 'Listen to the calming sound of ocean waves', difficulty: 'Easy' },
-     { sound: 'Bird Songs', description: 'Identify different bird species by their songs', difficulty: 'Medium' },
-     { sound: 'City Sounds', description: 'Recognize various urban sounds and noises', difficulty: 'Hard' }
-   ];
+  const soundSafariData = [
+    { sound: 'Ocean Waves', description: 'Listen to the calming sound of ocean waves', difficulty: 'Easy' },
+    { sound: 'Bird Songs', description: 'Identify different bird species by their songs', difficulty: 'Medium' },
+    { sound: 'City Sounds', description: 'Recognize various urban sounds and noises', difficulty: 'Hard' }
+  ];
 
-   // Sound Safari state
-   const [boxOpen, setBoxOpen] = useState(false);
-   const [cardFlipped, setCardFlipped] = useState(false);
-   const [currentPhoneme, setCurrentPhoneme] = useState(PHONEMES[0]);
-   const [feedback, setFeedback] = useState("");
-   const [progress, setProgress] = useState(0);
-   const [listening, setListening] = useState(false);
-   const [wordRevealed, setWordRevealed] = useState(false);
-   const [error, setError] = useState<string | null>(null);
-   const [micSupported, setMicSupported] = useState(true);
-   const [micPermission, setMicPermission] = useState(true);
+  // Sound Safari state
+  const [boxOpen, setBoxOpen] = useState(false);
+  const [cardFlipped, setCardFlipped] = useState(false);
+  const [currentPhoneme, setCurrentPhoneme] = useState(PHONEMES[0]);
+  const [feedback, setFeedback] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [listening, setListening] = useState(false);
+  const [wordRevealed, setWordRevealed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [micSupported, setMicSupported] = useState(true);
+  const [micPermission, setMicPermission] = useState(true);
 
-   // Flashcard state
-   const [flippedCard, setFlippedCard] = useState<number | null>(null);
+  // Flashcard state
+  const [flippedCard, setFlippedCard] = useState<number | null>(null);
 
   // Sample recent activity data - words selected from previous page
   const recentWords = [
@@ -173,6 +174,7 @@ const PronunciationPractice: React.FC = () => {
     setAudioBlob(null);
     audioChunks.current = [];
     setRecordingWaveform([]);
+    setPronunciationFeedback(null); // Clear previous feedback
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new window.MediaRecorder(stream);
@@ -199,11 +201,109 @@ const PronunciationPractice: React.FC = () => {
     }
   };
 
+  const generateNewWord = () => {
+    const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
+    setCurrentWord(randomWord);
+    setLatestRecordedWord(randomWord);
+    setPronunciationFeedback(null); // Clear previous feedback
+    handleClearRecording();
+  };
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  // Simulate getting the latest recorded word from the previous page
+  useEffect(() => {
+    // This would typically come from a context, localStorage, or API
+    // For now, we'll simulate it with a sample word
+    const getLatestWordFromPreviousPage = () => {
+      // Simulate getting the latest word from vocabulary practice
+      const sampleLatestWords = ['Apple', 'Ubiquitous', 'Serendipity', 'Eloquent', 'Perseverance'];
+      const randomLatestWord = sampleLatestWords[Math.floor(Math.random() * sampleLatestWords.length)];
+      setLatestRecordedWord(randomLatestWord);
+    };
+    
+    getLatestWordFromPreviousPage();
+  }, []);
+
+  // AI Pronunciation Analysis Function
+  const analyzePronunciation = async (audioBlob: Blob, word: string): Promise<PronunciationFeedback> => {
+    // Simulate AI analysis with realistic feedback
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing time
+    
+    const clarityScore = Math.floor(Math.random() * 30) + 70; // 70-100
+    const wordStressScore = Math.floor(Math.random() * 25) + 75; // 75-100
+    const paceScore = Math.floor(Math.random() * 35) + 65; // 65-100
+    const phonemeScore = Math.floor(Math.random() * 40) + 60; // 60-100
+    
+    const overallScore = Math.round((clarityScore + wordStressScore + paceScore + phonemeScore) / 4);
+    
+    return {
+      word,
+      overallScore,
+      clarity: {
+        score: clarityScore,
+        feedback: clarityScore >= 85 ? "Clear with minor slurs" : 
+                 clarityScore >= 70 ? "Generally clear, some slurring" : "Needs improvement in clarity"
+      },
+      wordStress: {
+        score: wordStressScore,
+        feedback: wordStressScore >= 85 ? "AP-ple-..." : 
+                 wordStressScore >= 70 ? "Good stress pattern" : "Work on syllable stress"
+      },
+      pace: {
+        score: paceScore,
+        feedback: paceScore >= 85 ? "Excellent, especially \"fv\" and \"h\" sounds" : 
+                 paceScore >= 70 ? "Good pace, some hesitation" : "A bit fast - try pausing more"
+      },
+      phonemeAccuracy: {
+        score: phonemeScore,
+        feedback: phonemeScore >= 85 ? "Very precise sounds" : 
+                 phonemeScore >= 70 ? "Mostly accurate" : "Focus on individual sounds"
+      },
+      suggestions: [
+        "Emphasize second syllables",
+        "Slow speech when pronouncing multisyllabic words."
+      ]
+    };
+  };
+
+  // Handle pronunciation analysis after recording
+  const handlePronunciationAnalysis = async () => {
+    if (!audioBlob) return;
+    
+    setIsAnalyzing(true);
+    try {
+      const feedback = await analyzePronunciation(audioBlob, currentWord);
+      setPronunciationFeedback(feedback);
+      console.log('Pronunciation feedback set:', feedback); // Debug log
+    } catch (error) {
+      console.error('Error analyzing pronunciation:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Update handleStopRecording to trigger analysis
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       stopWaveformAnalysis();
+      
+      // Trigger pronunciation analysis after recording stops
+      setTimeout(() => {
+        handlePronunciationAnalysis();
+      }, 500);
     }
   };
 
@@ -222,14 +322,11 @@ const PronunciationPractice: React.FC = () => {
     setIsRecording(false);
     setIsPlaying(false);
     setRecordingWaveform([]);
+    setPronunciationFeedback(null); // Clear pronunciation feedback
     stopWaveformAnalysis();
   };
 
-     const generateNewWord = () => {
-     const randomWord = sampleWords[Math.floor(Math.random() * sampleWords.length)];
-     setCurrentWord(randomWord);
-     handleClearRecording();
-   };
+
 
    // Function to update latest recorded word from external source (e.g., from previous page)
    const updateLatestRecordedWord = (word: string) => {
@@ -382,9 +479,32 @@ const PronunciationPractice: React.FC = () => {
       <div className="text-center">
         <h2 className="text-5xl font-bold text-white mb-4">Echo Match</h2>
         <div className="bg-white/20 backdrop-blur-sm rounded-xl px-8 py-3 mb-4 border border-white/30 inline-block">
-          <span className="text-2xl font-bold text-white">{latestRecordedWord}</span>
+          <span className="text-2xl font-bold text-white">{currentWord}</span>
         </div>
         <p className="text-2xl text-blue-200 mt-4">Listen and repeat the word</p>
+        <button
+          onClick={generateNewWord}
+          className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg font-semibold shadow hover:bg-blue-600 transition"
+        >
+          New Word
+        </button>
+        <button
+          onClick={() => {
+            const testFeedback = {
+              word: currentWord,
+              overallScore: 89,
+              clarity: { score: 85, feedback: "Clear with minor slurs" },
+              wordStress: { score: 92, feedback: "AP-ple-..." },
+              pace: { score: 88, feedback: "Excellent, especially \"fv\" and \"h\" sounds" },
+              phonemeAccuracy: { score: 75, feedback: "A bit fast - try pausing more" },
+              suggestions: ["Emphasize second syllables", "Slow speech when pronouncing multisyllabic words."]
+            };
+            setPronunciationFeedback(testFeedback);
+          }}
+          className="mt-2 px-6 py-2 bg-green-500 text-white rounded-lg font-semibold shadow hover:bg-green-600 transition"
+        >
+          Test AI Feedback
+        </button>
       </div>
 
       <div className="w-[650px] h-[320px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8 flex flex-col items-center justify-center">
@@ -771,23 +891,134 @@ const PronunciationPractice: React.FC = () => {
                 Track your pronunciation progress and get personalized feedback to improve your speaking skills.
               </p>
               
-              <div className="space-y-4">
-                <div className="bg-white/20 rounded-lg p-4">
-                  <h4 className="font-semibold text-white mb-2">Accuracy Score</h4>
-                  <div className="text-2xl font-bold text-green-400">85%</div>
+              {activeTab === 'pronunciation' && pronunciationFeedback ? (
+                // Pronunciation Feedback Section
+                <div className="space-y-6">
+                  {/* Overall Score */}
+                  <div className="text-center mb-6">
+                    <div className="w-20 h-20 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <span className="text-2xl font-bold text-white">{pronunciationFeedback.overallScore}</span>
+                    </div>
+                    <div className="text-white text-lg">/100</div>
+                    <div className="text-white text-xl font-semibold">{pronunciationFeedback.word}</div>
+                  </div>
+
+                  {/* Pronunciation Metrics */}
+                  <div className="space-y-4">
+                    {/* Clarity */}
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🎤</span>
+                          <span className="text-white font-medium">Clarity</span>
+                        </div>
+                        <span className="text-white text-sm">{pronunciationFeedback.clarity.score}%</span>
+                      </div>
+                      <div className="text-white text-sm mb-2">How clear was my pronunciation?</div>
+                      <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden mb-2">
+                        <div 
+                          className="h-2 bg-blue-400 transition-all duration-500" 
+                          style={{ width: `${pronunciationFeedback.clarity.score}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-white text-sm">{pronunciationFeedback.clarity.feedback}</div>
+                    </div>
+
+                    {/* Word Stress */}
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🎶</span>
+                          <span className="text-white font-medium">Word Stress</span>
+                        </div>
+                        <span className="text-white text-sm">{pronunciationFeedback.wordStress.score}%</span>
+                      </div>
+                      <div className="text-white text-sm mb-2">Did I stress the syllables correctly?</div>
+                      <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden mb-2">
+                        <div 
+                          className="h-2 bg-blue-400 transition-all duration-500" 
+                          style={{ width: `${pronunciationFeedback.wordStress.score}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-white text-sm">{pronunciationFeedback.wordStress.feedback}</div>
+                    </div>
+
+                    {/* Pace */}
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">⏰</span>
+                          <span className="text-white font-medium">Pace</span>
+                        </div>
+                        <span className="text-white text-sm">{pronunciationFeedback.pace.score}%</span>
+                      </div>
+                      <div className="text-white text-sm mb-2">Was I speaking at an appropriate speed?</div>
+                      <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden mb-2">
+                        <div 
+                          className="h-2 bg-blue-400 transition-all duration-500" 
+                          style={{ width: `${pronunciationFeedback.pace.score}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-white text-sm">{pronunciationFeedback.pace.feedback}</div>
+                    </div>
+
+                    {/* Phoneme Accuracy */}
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🎶🎶</span>
+                          <span className="text-white font-medium">Phoneme Accuracy</span>
+                        </div>
+                        <span className="text-white text-sm">{pronunciationFeedback.phonemeAccuracy.score}%</span>
+                      </div>
+                      <div className="text-white text-sm mb-2">How precise were my sounds?</div>
+                      <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden mb-2">
+                        <div 
+                          className="h-2 bg-blue-400 transition-all duration-500" 
+                          style={{ width: `${pronunciationFeedback.phonemeAccuracy.score}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-white text-sm">{pronunciationFeedback.phonemeAccuracy.feedback}</div>
+                    </div>
+
+                    {/* Suggestions */}
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <div className="text-white font-semibold mb-2">Suggestions</div>
+                      <ul className="space-y-1">
+                        {pronunciationFeedback.suggestions.map((suggestion, index) => (
+                          <li key={index} className="text-white text-sm">• {suggestion}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-                
-                <div className="bg-white/20 rounded-lg p-4">
-                  <h4 className="font-semibold text-white mb-2">Words Practiced</h4>
-                  <div className="text-2xl font-bold text-blue-400">127</div>
+              ) : (
+                // Default Stats Section
+                <div className="space-y-4">
+                  <div className="bg-white/20 rounded-lg p-4">
+                    <h4 className="font-semibold text-white mb-2">Accuracy Score</h4>
+                    <div className="text-2xl font-bold text-green-400">85%</div>
+                  </div>
+                  
+                  <div className="bg-white/20 rounded-lg p-4">
+                    <h4 className="font-semibold text-white mb-2">Words Practiced</h4>
+                    <div className="text-2xl font-bold text-blue-400">127</div>
+                  </div>
+                  
+                  <div className="bg-white/20 rounded-lg p-4">
+                    <h4 className="font-semibold text-white mb-2">Practice Time</h4>
+                    <div className="text-2xl font-bold text-purple-400">2h 15m</div>
+                  </div>
                 </div>
-                
-                <div className="bg-white/20 rounded-lg p-4">
-                  <h4 className="font-semibold text-white mb-2">Practice Time</h4>
-                  <div className="text-2xl font-bold text-purple-400">2h 15m</div>
-                </div>
-              </div>
+              )}
             </div>
+            
+            {isAnalyzing && (
+              <div className="text-center py-4">
+                <div className="text-white text-lg mb-2">Analyzing pronunciation...</div>
+                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"></div>
+              </div>
+            )}
             
             <button className="w-full px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold text-lg shadow-xl border-2 border-blue-200/50 backdrop-blur-sm hover:bg-blue-700 transition-all duration-300">
               View Detailed Report

@@ -31,3 +31,4 @@ export const useVocabulary = () => {
   if (!context) throw new Error('useVocabulary must be used within a VocabularyProvider');
   return context;
 }; 
+
