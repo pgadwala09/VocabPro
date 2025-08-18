@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft, Brain, AlertCircle, CheckCircle } from 'lucide-react';
 import { signUp } from '../lib/supabase';
 
@@ -16,6 +17,7 @@ function SignupPage({ onBack, onLoginClick, onSignupSuccess }: SignupPageProps) 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,19 +32,36 @@ function SignupPage({ onBack, onLoginClick, onSignupSuccess }: SignupPageProps) 
       return;
     }
 
+    if (!email || !name) {
+      setError('Please fill in all fields.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await signUp(email, password, name);
       
       if (error) {
-        setError(error.message);
-      } else if (data.user) {
-        setSuccess('Account created successfully! Welcome to Vocab Pro.');
-        // Call success callback after a short delay
-        setTimeout(() => {
-          onSignupSuccess?.();
-        }, 1500);
+        console.error('Signup error:', error);
+        setError(error.message || 'An error occurred during signup. Please try again.');
+      } else if (data) {
+        if (data.requiresEmailConfirmation) {
+          setSuccess('Account created successfully! Please check your email to confirm your account before logging in.');
+          setTimeout(() => {
+            onSignupSuccess?.();
+            navigate('/login');
+          }, 1500);
+        } else if (data.user) {
+          setSuccess('Account created successfully! Welcome to Vocab Pro.');
+          // Call success callback after a short delay
+          setTimeout(() => {
+            onSignupSuccess?.();
+            navigate('/login');
+          }, 1500);
+        }
       }
     } catch (err) {
+      console.error('Signup exception:', err);
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
