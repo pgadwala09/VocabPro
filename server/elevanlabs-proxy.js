@@ -6,7 +6,7 @@ import multer from 'multer';
 // Node 18+ has global fetch; no import needed
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 // Minimal CORS so the Vite dev server can call this proxy
 app.use((req, res, next) => {
@@ -21,6 +21,10 @@ const upload = multer();
 
 const API_KEY = process.env.ELEVENLABS_API_KEY || process.env.VITE_ELEVENLABS_API_KEY;
 const BASE = 'https://api.elevenlabs.io/v1';
+const AGENT_PRO_ID = process.env.ELEVENLABS_AGENT_PRO_ID || '';
+const AGENT_CON_ID = process.env.ELEVENLABS_AGENT_CON_ID || '';
+// Persist lightweight conversation ids in-memory per session key
+const SESSION_CONVERSATIONS = new Map();
 
 app.post('/elevenlabs/tts', async (req, res) => {
   try {
@@ -61,6 +65,69 @@ app.get('/elevenlabs/health', async (req, res) => {
   }
 });
 
+// Conversational AI Agent single-turn endpoint
+// Body: { side: 'pro' | 'con', text: string }
+app.post('/elevenlabs/agent-turn', async (req, res) => {
+  try {
+    if (!API_KEY) return res.status(401).json({ error: 'missing_api_key' });
+    const { side, text, session, topic } = req.body || {};
+    if (!text || typeof text !== 'string') return res.status(400).json({ error: 'missing_text' });
+    const agentId = side === 'con' ? AGENT_CON_ID : AGENT_PRO_ID;
+    if (!agentId) return res.status(400).json({ error: 'missing_agent_id' });
+
+    // 1) Ensure conversation (reuse by session key if provided)
+    let convId = session ? SESSION_CONVERSATIONS.get(session) : null;
+    if (!convId) {
+      const convResp = await fetch(`${BASE}/convai/conversations`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'xi-api-key': API_KEY },
+        body: JSON.stringify({ agent_id: agentId })
+      });
+      if (!convResp.ok) {
+        const err = await convResp.text();
+        return res.status(convResp.status).json({ error: 'conv_create_failed', details: err });
+      }
+      const conv = await convResp.json().catch(() => ({}));
+      convId = conv.conversation_id || conv.id;
+      if (!convId) return res.status(502).json({ error: 'no_conversation_id' });
+      if (session) SESSION_CONVERSATIONS.set(session, convId);
+      // Prime the conversation with topic and role to keep the agent on-topic
+      const primer = `You are the ${side === 'con' ? 'CON' : 'PRO'} debater. Stay strictly on the topic: "${topic || 'the debate topic'}". Keep responses 2-4 concise sentences, persuasive, and on-topic. Do not change topics.`;
+      await fetch(`${BASE}/convai/conversations/${convId}/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'xi-api-key': API_KEY },
+        body: JSON.stringify({ role: 'user', text: primer })
+      }).catch(()=>{});
+    }
+
+    // 2) Send user message
+    const msgResp = await fetch(`${BASE}/convai/conversations/${convId}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'xi-api-key': API_KEY },
+      body: JSON.stringify({ role: 'user', text })
+    });
+    if (!msgResp.ok) {
+      const err = await msgResp.text();
+      return res.status(msgResp.status).json({ error: 'send_msg_failed', details: err });
+    }
+
+    // 3) Fetch audio response
+    const audioResp = await fetch(`${BASE}/convai/conversations/${convId}/response/audio?output_format=mp3_44100_128`, {
+      method: 'GET',
+      headers: { accept: 'audio/mpeg', 'xi-api-key': API_KEY }
+    });
+    if (!audioResp.ok) {
+      const err = await audioResp.text();
+      return res.status(audioResp.status).json({ error: 'agent_audio_failed', details: err });
+    }
+
+    res.setHeader('content-type', 'audio/mpeg');
+    audioResp.body.pipe(res);
+  } catch (e) {
+    res.status(500).json({ error: 'proxy_error', message: e?.message || 'unknown' });
+  }
+});
+
 app.post('/elevenlabs/s2s', upload.single('file'), async (req, res) => {
   try {
     const voiceId = req.body.voiceId || '21m00Tcm4TlvDq8ikWAM';
@@ -84,6 +151,21 @@ app.post('/elevenlabs/s2s', upload.single('file'), async (req, res) => {
     res.setHeader('content-type', 'audio/mpeg');
     r.body.pipe(res);
   } catch (e) { res.status(500).json({ error: 'proxy_error' }); }
+});
+
+// Concatenate multiple MP3 parts (base64-encoded) into a single MP3
+// Body: { parts: string[] } where each string is base64 of an mp3 buffer with matching codec/bitrate
+app.post('/debate/concat', async (req, res) => {
+  try {
+    const parts = Array.isArray(req.body?.parts) ? req.body.parts : [];
+    if (parts.length === 0) return res.status(400).json({ error: 'no_parts' });
+    const buffers = parts.map((b64) => Buffer.from(b64, 'base64'));
+    const combined = Buffer.concat(buffers);
+    res.setHeader('content-type', 'audio/mpeg');
+    res.send(combined);
+  } catch (e) {
+    res.status(500).json({ error: 'concat_failed', message: e?.message || 'unknown' });
+  }
 });
 
 const port = process.env.PORT || 8787;

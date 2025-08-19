@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy } from 'lucide-react';
+import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
-import { generateElevenLabsSpeech, speakWithBrowser } from '../lib/tts';
+import { googleCloudTts } from '../lib/tts';
+import { generateDebateTurn } from '../lib/insights';
 import EmojiPickerLib from 'emoji-picker-react';
 
 
@@ -72,6 +73,229 @@ const DebateTournament: React.FC = () => {
   const [summaryAudioUrl, setSummaryAudioUrl] = useState<string | null>(null);
   const [summaryUploading, setSummaryUploading] = useState(false);
   const SUMMARY_BUCKET = 'debate-summaries';
+  const debateAudioPartsRef = useRef<string[]>([]);
+
+  // Single shared audio element to avoid overlapping playback
+  const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // UI controls: round and timer minutes
+  const [selectedRound, setSelectedRound] = useState<number>(1);
+  const [selectedMinutes, setSelectedMinutes] = useState<number>(5);
+
+  // Helpers for sequential agent speaking with GCP fallback
+  const ensureAudio = () => {
+    if (!sharedAudioRef.current) {
+      sharedAudioRef.current = new Audio();
+    }
+    return sharedAudioRef.current as HTMLAudioElement;
+  };
+
+  type AudioPart = { url: string; b64?: string };
+
+  const playPart = async (part: AudioPart) => {
+    const { url, b64 } = part;
+    try {
+      const audio = ensureAudio();
+      audio.pause();
+      audio.src = url;
+      audio.preload = 'auto';
+      audio.load();
+      await new Promise<void>((resolve)=>{
+        if (audio.readyState >= 3) { resolve(); return; }
+        let settled = false;
+        const done = () => { if (settled) return; settled = true; cleanup(); resolve(); };
+        const cleanup = () => {
+          audio.removeEventListener('canplaythrough', done);
+          audio.removeEventListener('canplay', done);
+          audio.removeEventListener('loadeddata', done);
+          audio.removeEventListener('error', done);
+        };
+        const timer = setTimeout(done, 800);
+        const wrapped = () => { clearTimeout(timer); done(); };
+        audio.addEventListener('canplaythrough', wrapped, { once: true });
+        audio.addEventListener('canplay', wrapped, { once: true });
+        audio.addEventListener('loadeddata', wrapped, { once: true });
+        audio.addEventListener('error', wrapped, { once: true });
+      });
+      await audio.play().catch(() => {});
+      // capture the audio data for archival
+      try {
+        if (b64) {
+          debateAudioPartsRef.current.push(b64);
+        } else {
+          const buf = await fetch(url).then(r=>r.arrayBuffer());
+          const b64buf = btoa(String.fromCharCode(...new Uint8Array(buf)));
+          debateAudioPartsRef.current.push(b64buf);
+        }
+      } catch {}
+      await new Promise<void>((resolve) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => resolve();
+      });
+    } catch {}
+  };
+
+  // Simple thematic pools to ensure varied fallback content across turns
+  const proThemes = ['benefits & impact', 'real-world example', 'cost–benefit', 'innovation', 'fairness', 'long-term gains'];
+  const conThemes = ['risks & trade-offs', 'feasibility', 'cost burden', 'unintended effects', 'equity concerns', 'uncertainty'];
+
+  const buildProFallback = (topic: string, theme: string): string => {
+    switch (theme) {
+      case 'benefits & impact':
+        return `As PRO on ${topic}, the key point is practical benefit: it improves outcomes for ordinary people and removes friction in daily life. We get more value with fewer resources.`;
+      case 'real-world example':
+        return `For PRO on ${topic}, look at places that tried it: early pilots show higher satisfaction and measurable gains. When scaled carefully, results get better, not worse.`;
+      case 'cost–benefit':
+        return `From PRO, the cost of ${topic} is small compared with gains in productivity and wellbeing. The return on investment stacks up year after year.`;
+      case 'innovation':
+        return `PRO argues ${topic} unlocks innovation: once the baseline improves, people experiment more and new solutions appear faster.`;
+      case 'fairness':
+        return `PRO stresses fairness: ${topic} levels the playing field so opportunity depends less on luck and more on effort.`;
+      default:
+        return `Long term, ${topic} compounds advantages: small improvements each month add up to a step‑change over a few years.`;
+    }
+  };
+
+  const buildConFallback = (topic: string, theme: string, lastProPoint?: string | null): string => {
+    switch (theme) {
+      case 'risks & trade-offs':
+        return `As CON on ${topic}, every benefit hides a trade‑off: hidden costs, new failure points, or perverse incentives. We should not pretend the downsides vanish.`;
+      case 'feasibility':
+        return `CON questions feasibility: ${topic} sounds elegant, but execution is messy. Without capacity, the plan slips and outcomes disappoint.`;
+      case 'cost burden':
+        return `From CON, the price tag of ${topic} lands on taxpayers or users. Before expanding, prove it pays for itself without squeezing essentials.`;
+      case 'unintended effects':
+        return `CON warns about unintended effects: once ${topic} changes behavior, people adapt in ways that blunt the intended gains.`;
+      case 'equity concerns':
+        return `CON stresses equity: the groups who need help most may be last to benefit from ${topic}. ${lastProPoint ? 'Your claim ignores who gets left out.' : ''}`;
+      default:
+        return `Finally, CON highlights uncertainty: evidence is thin and cherry‑picked. A cautious pilot with clear exit criteria beats a blanket rollout.`;
+    }
+  };
+
+  const fetchAgentAudio = async (side: 'pro' | 'con', text: string): Promise<AudioPart | null> => {
+    try {
+      const base = (import.meta.env.VITE_PROXY_BASE || 'http://127.0.0.1:8787');
+      const session = `${roomId}-${selectedRound}`;
+      const r = await fetch(base + '/elevenlabs/agent-turn', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ side, text, session, topic: currentDebate?.topic || 'Debate Topic' })
+      });
+      if (!r.ok) return null;
+      const buf = await r.arrayBuffer();
+      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      return { url, b64 };
+    } catch {
+      return null;
+    }
+  };
+
+  const synthesizeGcp = async (text: string): Promise<AudioPart | null> => {
+    try {
+      const base = (import.meta.env.VITE_GCP_TTS_PROXY || 'http://127.0.0.1:8789');
+      const r = await fetch(base + '/gcp/tts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text, voiceName: 'en-US-Standard-A' })
+      });
+      if (!r.ok) return null;
+      const buf = await r.arrayBuffer();
+      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      return { url, b64 };
+    } catch {
+      return null;
+    }
+  };
+
+  // Run a timed debate for the configured duration (minutes). Alternates turns until time elapses.
+  const speakAgentsSequentially = async (topic: string) => {
+    if (isSpeaking) return;
+    setIsSpeaking(true);
+    try {
+      const minutes = selectedMinutes || (typeof currentDebate?.duration === 'number' && currentDebate.duration > 0 ? currentDebate.duration : 5);
+      const endTs = Date.now() + minutes * 60 * 1000;
+      setRemainingSeconds(Math.ceil((endTs - Date.now()) / 1000));
+      const tickTimer = setInterval(()=>{
+        const s = Math.max(0, Math.ceil((endTs - Date.now()) / 1000));
+        setRemainingSeconds(s);
+        if (s <= 0) clearInterval(tickTimer);
+      }, 1000);
+      let lastPro: string | null = null;
+      let lastCon: string | null = null;
+      let turn: 'pro' | 'con' = 'pro';
+
+      let idx = 0;
+      while (Date.now() < endTs) {
+        if (turn === 'pro') {
+          const theme = proThemes[idx % proThemes.length];
+          const generated = await generateDebateTurn('pro', topic, lastCon || undefined);
+          const text = generated || buildProFallback(topic, theme);
+          const agent = await fetchAgentAudio('pro', text);
+          if (agent) { await playPart(agent); } else { const g = await synthesizeGcp(text); if (g) await playPart(g); }
+          setProArgument(text);
+          lastPro = text;
+          turn = 'con';
+        } else {
+          const theme = conThemes[idx % conThemes.length];
+          const generated = await generateDebateTurn('con', topic, lastPro || undefined);
+          const text = generated || buildConFallback(topic, theme, lastPro);
+          const agent = await fetchAgentAudio('con', text);
+          if (agent) { await playPart(agent); } else { const g = await synthesizeGcp(text); if (g) await playPart(g); }
+          setConArgument(text);
+          lastCon = text;
+          turn = 'pro';
+        }
+        idx += 1;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } finally {
+      setIsSpeaking(false);
+      setRemainingSeconds(null);
+      // send parts to backend to concatenate and store locally in memory; then upload to Supabase as one file
+      try {
+        const parts = debateAudioPartsRef.current.splice(0);
+        if (parts.length > 0) {
+          const base = (import.meta.env.VITE_PROXY_BASE || 'http://127.0.0.1:8787');
+          const r = await fetch(base + '/debate/concat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ parts }) });
+          if (r.ok) {
+            const buf = await r.arrayBuffer();
+            const mp3 = new Blob([buf], { type: 'audio/mpeg' });
+            const url = URL.createObjectURL(mp3);
+            setSummaryAudioUrl(url);
+            // try to upload to Supabase bucket
+            try {
+              setSummaryUploading(true);
+              const path = `${currentDebate?.id || 'debate'}/debate-${Date.now()}.mp3`;
+              const { error: uploadError } = await supabase.storage.from(SUMMARY_BUCKET).upload(path, mp3, { contentType: 'audio/mpeg', upsert: true });
+              if (!uploadError) {
+                const { data: pub } = supabase.storage.from(SUMMARY_BUCKET).getPublicUrl(path);
+                if (pub?.publicUrl) {
+                  // push into recent activity list
+                  setLiveDebates(prev => {
+                    const topic = currentDebate?.topic || 'Debate';
+                    const existing = prev.findIndex(d => d.topic === topic);
+                    const rec = { id: Date.now().toString(), url: pub.publicUrl, timestamp: new Date(), role: 'builder' as const };
+                    if (existing >= 0) {
+                      const clone = [...prev];
+                      clone[existing] = { ...clone[existing], recordings: [...clone[existing].recordings, rec] };
+                      return clone;
+                    }
+                    return [...prev, { id: Date.now().toString(), topic, timestamp: new Date(), builderCharacter: currentDebate?.builderCharacter || 'Builder', breakerCharacter: currentDebate?.breakerCharacter || 'Breaker', duration: String(selectedMinutes), recordings: [rec] }];
+                  });
+                }
+              }
+            } finally { setSummaryUploading(false); }
+          }
+        }
+      } catch {}
+    }
+  };
 
   interface DebateActivity {
     id: string;
@@ -102,6 +326,9 @@ const DebateTournament: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<'live' | 'chat'>('live');
   const [message, setMessage] = useState('');
+  // Debate UI states
+  const [proArgument, setProArgument] = useState<string>('');
+  const [conArgument, setConArgument] = useState<string>('');
   const [messages, setMessages] = useState<Array<{
     id: string;
     text: string;
@@ -562,267 +789,85 @@ const DebateTournament: React.FC = () => {
           <p className="text-xl text-gray-300">Join real-time debates with other participants</p>
         </div>
 
-        {/* Debate Panel */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden relative">
-          {/* Title Bar */}
-          <div className="bg-gradient-to-r from-purple-600/50 to-blue-600/50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-purple-300">Builder</div>
-              <h2 className="text-2xl font-bold text-white text-center">{currentDebate.topic}</h2>
-              <div className="text-lg font-semibold text-blue-300">Breaker</div>
+        {/* Debate with AI simplified panel */}
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden">
+          <div className="p-6">
+            <div className="text-center mb-6">
+              <h2 className="text-4xl font-bold text-white">Debate with AI</h2>
             </div>
-          </div>
-
-          {/* Debate Info */}
-          <div className="p-4 flex items-center justify-between text-gray-300">
-            <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">Live Now</span>
-            <span className="text-sm">{currentDebate.duration} minutes</span>
-            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">{currentDebate.debateStyle}</span>
-            <span className="text-sm">Participants: {participants}</span>
-          </div>
-
-          {/* Participants Panel */}
-          <div className="grid grid-cols-3 gap-4 p-6">
-            {/* Builder */}
-            <div className="bg-purple-500/20 rounded-xl p-6 text-center h-[32rem]">
-              <div className="text-lg font-semibold text-purple-300 mb-4">Builder</div>
-              
-              {/* Timer and Points */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-purple-500/30 rounded-lg p-3">
-                  <div className="text-sm text-purple-300 mb-1">Timer</div>
-                  <div className={`text-2xl font-bold ${activeRole === 'builder' ? 'text-purple-300' : 'text-white'}`}>
-                    {Math.floor(builderTime / 60)}:{(builderTime % 60).toString().padStart(2, '0')}
+            {/* Top row: PRO | Round | Timer | CON */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="text-2xl font-bold text-white">PRO</div>
+              <div className="flex items-center gap-4">
+                {isSpeaking ? (
+                  <div className="flex items-center gap-2 bg-white/10 text-white px-3 py-2 rounded-xl border border-white/20 min-w-[100px] justify-center">
+                    <Clock className="w-4 h-4" />
+                    <span className="tabular-nums">{`${String(Math.floor((remainingSeconds ?? Math.round(selectedMinutes*60))/60)).padStart(2,'0')}:${String((remainingSeconds ?? Math.round(selectedMinutes*60))%60).padStart(2,'0')}`}</span>
                   </div>
-                </div>
-                <div className="bg-purple-500/30 rounded-lg p-3">
-                  <div className="text-sm text-purple-300 mb-1">Points</div>
-                  <div className="text-2xl font-bold text-white">{builderScore}</div>
-                  <div className="mt-2 flex gap-2 justify-center">
-                    <button onClick={() => { const v = builderScore + 1; setBuilderScore(v); broadcast('score_update', { side: 'builder', value: v }); }} className="px-2 py-1 bg-white/20 rounded">+1</button>
-                    <button onClick={() => { const v = Math.max(0, builderScore - 1); setBuilderScore(v); broadcast('score_update', { side: 'builder', value: v }); }} className="px-2 py-1 bg-white/20 rounded">-1</button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Character Icon */}
-              <div className={`w-24 h-24 mx-auto bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4 shadow-lg ${
-                activeRole === 'builder' ? 'ring-4 ring-purple-400 animate-pulse' : ''
-              }`}>
-                <span className="text-4xl">🎭</span>
-              </div>
-              <div className="text-xl text-white font-medium">{currentDebate.builderCharacter}</div>
-            </div>
-
-            {/* VS with Trophy */}
-            <div className="flex flex-col items-center justify-center space-y-6">
-              <div className="relative">
-                {/* Main Trophy Container */}
-                <div className="w-40 h-48 relative drop-shadow-lg">
-                  {/* Trophy Head */}
-                  <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-24 bg-yellow-300 rounded-lg overflow-hidden">
-                    {/* Trophy Icon Container */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Trophy className="w-16 h-16 text-yellow-100" />
-                    </div>
-                  </div>
-
-                  {/* Trophy Handles */}
-                  <div className="absolute top-6 -left-6 w-6 h-16 bg-yellow-300 rounded-full" />
-                  <div className="absolute top-6 -right-6 w-6 h-16 bg-yellow-300 rounded-full" />
-
-                  {/* Trophy Neck */}
-                  <div className="absolute top-24 left-1/2 transform -translate-x-1/2">
-                    {/* Neck Top */}
-                    <div className="w-10 h-4 bg-yellow-300" />
-                    {/* Neck Bottom */}
-                    <div className="w-8 h-8 bg-yellow-300" />
-                  </div>
-
-                  {/* Trophy Base */}
-                  <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-                    {/* Base Top */}
-                    <div className="w-24 h-4 bg-yellow-300" />
-                    {/* Base Bottom */}
-                    <div className="w-32 h-6 bg-yellow-300" />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="text-5xl font-bold text-white/50 mt-6">VS</div>
-            </div>
-
-            {/* Breaker */}
-            <div className="bg-blue-500/20 rounded-xl p-6 text-center h-[32rem]">
-              <div className="text-lg font-semibold text-blue-300 mb-4">Breaker</div>
-              
-              {/* Timer and Points */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-blue-500/30 rounded-lg p-3">
-                  <div className="text-sm text-blue-300 mb-1">Timer</div>
-                  <div className={`text-2xl font-bold ${activeRole === 'breaker' ? 'text-blue-300' : 'text-white'}`}>
-                    {Math.floor(breakerTime / 60)}:{(breakerTime % 60).toString().padStart(2, '0')}
-                  </div>
-                </div>
-                <div className="bg-blue-500/30 rounded-lg p-3">
-                  <div className="text-sm text-blue-300 mb-1">Points</div>
-                  <div className="text-2xl font-bold text-white">{breakerScore}</div>
-                  <div className="mt-2 flex gap-2 justify-center">
-                    <button onClick={() => { const v = breakerScore + 1; setBreakerScore(v); broadcast('score_update', { side: 'breaker', value: v }); }} className="px-2 py-1 bg-white/20 rounded">+1</button>
-                    <button onClick={() => { const v = Math.max(0, breakerScore - 1); setBreakerScore(v); broadcast('score_update', { side: 'breaker', value: v }); }} className="px-2 py-1 bg-white/20 rounded">-1</button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Character Icon */}
-              <div className={`w-24 h-24 mx-auto bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center mb-4 shadow-lg ${
-                activeRole === 'breaker' ? 'ring-4 ring-blue-400 animate-pulse' : ''
-              }`}>
-                <span className="text-4xl">🎭</span>
-              </div>
-              <div className="text-xl text-white font-medium">{currentDebate.breakerCharacter}</div>
-            </div>
-          </div>
-
-          {/* Action Button and Recording Section */}
-          <div className="p-6 border-t border-white/10 h-48 flex flex-col items-center justify-center space-y-6">
-            {/* Start/Progress Button */}
-            <button 
-              onClick={() => {
-                if (!isDebateStarted) {
-                  // Ensure timers are initialized on start (guard against 0)
-                  const half = Math.max(30, Math.floor((currentDebate?.duration || 2) * 30));
-                  if (builderTimeRef.current <= 0 || breakerTimeRef.current <= 0) {
-                    setBuilderTime(half);
-                    setBreakerTime(half);
-                    builderTimeRef.current = half;
-                    breakerTimeRef.current = half;
-                  }
-                  setIsDebateStarted(true);
-                  setActiveRole('builder');
-                  activeRoleRef.current = 'builder';
-                  leaderRef.current = true; // this tab becomes authoritative ticker
-                  broadcast('start_stop', { started: true });
-                  broadcast('role_update', { role: 'builder' });
-                  startRecording();
-                } else {
-                  // Toggle pause/resume
-                  const nextPaused = !isPaused;
-                  setIsPaused(nextPaused);
-                  broadcast('pause_state', { paused: nextPaused });
-                }
-              }}
-              className={`w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 px-8 rounded-xl font-semibold text-lg transition-all duration-300 flex items-center justify-center space-x-3 ${
-                isDebateStarted
-                  ? (isPaused ? 'bg-yellow-600 hover:bg-yellow-700' : 'opacity-90')
-                  : 'hover:from-green-700 hover:to-emerald-700 transform hover:scale-105'
-              }`}
-            >
-              <MessageSquare className="w-6 h-6" />
-              <span>{!isDebateStarted ? 'Start Debate' : (isPaused ? 'Resume' : 'Pause')}</span>
-            </button>
-
-            {isDebateStarted && (
-              <button
-                onClick={() => {
-                  setIsDebateStarted(false);
-                  setIsPaused(false);
-                  setActiveRole(null);
-                  builderTimeRef.current = 0;
-                  breakerTimeRef.current = 0;
-                  setBuilderTime(0);
-                  setBreakerTime(0);
-                  leaderRef.current = false;
-                  broadcast('start_stop', { started: false });
-                  stopRecording();
-                }}
-                className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-6 rounded-xl font-semibold"
-              >
-                Stop Debate
-              </button>
-            )}
-
-            {/* Recording Controls */}
-            {isDebateStarted && (
-              <div className="flex flex-col items-center space-y-4">
-                <div className="text-xl font-semibold text-white mb-2">
-                  {activeRole === 'builder' ? 'Builder\'s Turn' : 'Breaker\'s Turn'}
-                </div>
-                <button
-                  onClick={() => {
-                    if (isRecording) {
-                      stopRecording();
-                    } else {
-                      startRecording();
-                    }
-                  }}
-                  className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 transform hover:scale-110 ${
-                    isRecording 
-                      ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
-                      : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700'
-                  }`}
-                >
-                  {isRecording ? (
-                    <Pause className="w-10 h-10 text-white" />
-                  ) : (
-                    <Play className="w-10 h-10 text-white ml-1" />
-                  )}
-                </button>
-                {/* Recording Indicator */}
-                <div className="flex justify-center">
-                  {isRecording ? (
-                    <div className="flex items-center justify-center w-3 h-3">
-                      <div className="w-3 h-3 bg-red-500 rounded-full animate-ping absolute"></div>
-                      <div className="w-3 h-3 bg-red-500 rounded-full relative"></div>
-                    </div>
-                  ) : (
-                    <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Generate Audio Summary */}
-            {!isDebateStarted && (
-              <div className="w-full flex flex-col items-center gap-3">
-                <button
-                  onClick={async () => {
-                    const keyPoints = `Debate on ${currentDebate?.topic}. Builder score ${builderScore}, Breaker score ${breakerScore}. Key takeaways: clear arguments, counterpoints, and conclusion.`;
-                    const tts = await generateElevenLabsSpeech(keyPoints);
-                    if (tts) {
-                      setSummaryAudioUrl(tts.url);
-                      // Upload to Supabase Storage (best-effort)
-                      try {
-                        setSummaryUploading(true);
-                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-                        const path = `${currentDebate?.id || 'debate'}/summary-${ts}.mp3`;
-                        const { error } = await supabase.storage.from(SUMMARY_BUCKET).upload(path, tts.blob, { contentType: 'audio/mpeg', upsert: true });
-                        if (!error) {
-                          // Optionally get public URL
-                          const { data } = supabase.storage.from(SUMMARY_BUCKET).getPublicUrl(path);
-                          if (data?.publicUrl) setSummaryAudioUrl(data.publicUrl);
-                        }
-                      } finally {
-                        setSummaryUploading(false);
-                      }
-                    } else {
-                      speakWithBrowser(keyPoints);
-                    }
-                  }}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-3 rounded-xl font-semibold"
-                >
-                  {summaryUploading ? 'Uploading summary...' : 'Generate Audio Summary'}
-                </button>
-
-
-                {summaryAudioUrl && (
-                  <audio controls src={summaryAudioUrl} className="w-full" />
+                ) : (
+                  <>
+                    <select value={selectedRound} onChange={(e)=>setSelectedRound(parseInt(e.target.value))} className="bg-white text-purple-900 px-4 py-2 rounded-xl border border-white/20">
+                      <option value={1}>Round 1</option>
+                      <option value={2}>Round 2</option>
+                      <option value={3}>Round 3</option>
+                    </select>
+                    <select value={selectedMinutes} onChange={(e)=>setSelectedMinutes(parseFloat(e.target.value))} className="bg-white text-purple-900 px-4 py-2 rounded-xl border border-white/20">
+                      <option value={0.5}>00:30</option>
+                      <option value={1}>01:00</option>
+                      <option value={2}>02:00</option>
+                      <option value={3}>03:00</option>
+                      <option value={5}>05:00</option>
+                    </select>
+                  </>
                 )}
               </div>
-            )}
+              <div className="text-2xl font-bold text-white">CON</div>
+            </div>
+            {/* Two columns */}
+            <div className="relative grid grid-cols-2 gap-8">
+              {/* vertical divider */}
+              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20 pointer-events-none" />
+              {/* PRO side */}
+              <div className="flex flex-col items-center">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-14 h-14 rounded-full border border-white/30 bg-white/20 flex items-center justify-center text-white text-2xl">👤</div>
+                  <select className="bg-white/10 text-white px-3 py-2 rounded-lg border border-white/20">
+                    <option>AI</option>
+                  </select>
+                </div>
+                <div className="w-full">
+                  <div className="bg-white/10 text-white/90 rounded-xl border border-white/20 p-4 min-h-[160px]">
+                    <div className="font-semibold mb-2">Argument</div>
+                    <div className="whitespace-pre-wrap text-sm opacity-90">{proArgument || ' '}</div>
+                  </div>
+                  {/* Button removed; unified button below */}
+                </div>
+              </div>
+              {/* CON side */}
+              <div className="flex flex-col items-center">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-14 h-14 rounded-full border border-white/30 bg-white/20 flex items-center justify-center text-white text-2xl">👤</div>
+                  <select className="bg-white/10 text-white px-3 py-2 rounded-lg border border-white/20">
+                    <option>AI</option>
+                  </select>
+                </div>
+                <div className="w-full">
+                  <div className="bg-white/10 text-white/90 rounded-xl border border-white/20 p-4 min-h-[160px]">
+                    <div className="font-semibold mb-2">Argument</div>
+                    <div className="whitespace-pre-wrap text-sm opacity-90">{conArgument || ' '}</div>
+                  </div>
+                  {/* Button removed; unified button below */}
+                </div>
+              </div>
+            </div>
+            {/* Unified Generate button */}
+            <div className="mt-6">
+              <button onClick={async ()=>{
+                const topic = currentDebate?.topic || 'Debate Topic';
+                await speakAgentsSequentially(topic);
+              }} disabled={isSpeaking} className="w-full bg-white text-purple-900 font-semibold py-3 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed">Generate</button>
+            </div>
           </div>
-
-
         </div>
 
         {/* Recent Activity List */}
