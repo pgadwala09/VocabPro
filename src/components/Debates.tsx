@@ -237,30 +237,44 @@ const Debates: React.FC = () => {
       }
     }
 
-    // Otherwise, check if form is filled
-    if (formData.topic && formData.debateStyle && formData.sideSelection && 
-        formData.builderCharacter && formData.breakerCharacter && formData.duration) {
-      // Convert duration to minutes (take the first number for ranges)
-      const durationInMinutes = parseInt(formData.duration.split('-')[0]);
+    // Otherwise, proceed depending on style
+    const isAI = formData.debateStyle === 'ai';
+    if (isAI) {
+      if (!formData.topic || !formData.debateStyle) {
+        alert('Please enter a topic and select "Debate with AI" style.');
+        return;
+      }
       const debateToSave = {
         id: Date.now().toString(),
         topic: formData.topic,
         debateStyle: formData.debateStyle,
-        sideSelection: formData.sideSelection,
-        builderCharacter: formData.builderCharacter,
-        breakerCharacter: formData.breakerCharacter,
-        duration: durationInMinutes,
+        sideSelection: 'builder',
+        builderCharacter: 'AI',
+        breakerCharacter: 'AI',
+        duration: 5,
         createdAt: new Date()
       };
-      console.log('Saving form data:', debateToSave);
-      
-      // Store the form data in localStorage for the tournament page
       localStorage.setItem('currentDebate', JSON.stringify(debateToSave));
       navigate('/debate-tournament');
     } else {
-      console.log('Form validation failed');
-      // Show error or alert that all fields are required
-      alert('Please either fill in all fields or select a debate from Recent Activity');
+      if (formData.topic && formData.debateStyle && formData.sideSelection &&
+          formData.builderCharacter && formData.breakerCharacter && formData.duration) {
+        const durationInMinutes = parseInt(formData.duration.split('-')[0]);
+        const debateToSave = {
+          id: Date.now().toString(),
+          topic: formData.topic,
+          debateStyle: formData.debateStyle,
+          sideSelection: formData.sideSelection,
+          builderCharacter: formData.builderCharacter,
+          breakerCharacter: formData.breakerCharacter,
+          duration: durationInMinutes,
+          createdAt: new Date()
+        };
+        localStorage.setItem('currentDebate', JSON.stringify(debateToSave));
+        navigate('/debate-tournament');
+      } else {
+        alert('Please fill in all fields or select a debate from Recent Activity');
+      }
     }
   };
 
@@ -303,8 +317,8 @@ const Debates: React.FC = () => {
             </select>
           </div>
 
-          {/* Side Selection */}
-          <div>
+          {/* Side Selection (hidden for AI style) */}
+          <div className={`${formData.debateStyle === 'ai' ? 'hidden' : ''}`}>
             <label className="block text-white text-sm font-medium mb-2">Side Selection</label>
             <select
               name="sideSelection"
@@ -319,8 +333,8 @@ const Debates: React.FC = () => {
             </select>
           </div>
 
-          {/* Builder Character */}
-          <div>
+          {/* Builder Character (hidden for AI style) */}
+          <div className={`${formData.debateStyle === 'ai' ? 'hidden' : ''}`}>
             <label className="block text-white text-sm font-medium mb-2">Builder Character</label>
             <select
               name="builderCharacter"
@@ -335,8 +349,8 @@ const Debates: React.FC = () => {
             </select>
           </div>
 
-          {/* Breaker Character */}
-          <div>
+          {/* Breaker Character (hidden for AI style) */}
+          <div className={`${formData.debateStyle === 'ai' ? 'hidden' : ''}`}>
             <label className="block text-white text-sm font-medium mb-2">Breaker Character</label>
             <select
               name="breakerCharacter"
@@ -351,8 +365,8 @@ const Debates: React.FC = () => {
             </select>
           </div>
 
-          {/* Duration */}
-          <div>
+          {/* Duration (hidden for AI style) */}
+          <div className={`${formData.debateStyle === 'ai' ? 'hidden' : ''}`}>
             <label className="block text-white text-sm font-medium mb-2">Duration</label>
             <select
               name="duration"
@@ -455,22 +469,26 @@ const Debates: React.FC = () => {
                     <span className="text-gray-400">Style:</span>
                     <span>{debateStyles.find(s => s.value === debate.debateStyle)?.label || debate.debateStyle}</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-gray-400">Side:</span>
-                    <span>{sideOptions.find(s => s.value === debate.sideSelection)?.label || debate.sideSelection}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-gray-400">Duration:</span>
-                    <span>{durationOptions.find(d => d.value === debate.duration)?.label || debate.duration}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-gray-400">Builder:</span>
-                    <span>{characterOptions.find(c => c.value === debate.builderCharacter)?.label || debate.builderCharacter}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-gray-400">Breaker:</span>
-                    <span>{characterOptions.find(c => c.value === debate.breakerCharacter)?.label || debate.breakerCharacter}</span>
-                  </div>
+                  {debate.debateStyle !== 'ai' && (
+                    <>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-gray-400">Side:</span>
+                        <span>{sideOptions.find(s => s.value === debate.sideSelection)?.label || debate.sideSelection}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-gray-400">Duration:</span>
+                        <span>{durationOptions.find(d => d.value === debate.duration)?.label || debate.duration}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-gray-400">Builder:</span>
+                        <span>{characterOptions.find(c => c.value === debate.builderCharacter)?.label || debate.builderCharacter}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-gray-400">Breaker:</span>
+                        <span>{characterOptions.find(c => c.value === debate.breakerCharacter)?.label || debate.breakerCharacter}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             ))
