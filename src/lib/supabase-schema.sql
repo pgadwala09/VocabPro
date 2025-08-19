@@ -124,3 +124,25 @@ CREATE POLICY "Users can update own sessions" ON pronunciation_sessions
     FOR UPDATE USING (auth.uid() = user_id);
 
 
+-- Debates metadata used by Live Debates UI
+CREATE TABLE IF NOT EXISTS debates (
+    id TEXT PRIMARY KEY,
+    topic TEXT NOT NULL,
+    debate_style TEXT,
+    duration INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE debates ENABLE ROW LEVEL SECURITY;
+
+-- Public read is fine for non-sensitive debate metadata
+CREATE POLICY IF NOT EXISTS "Read debates" ON debates
+    FOR SELECT USING (true);
+
+-- Allow inserts/updates from anon/authenticated (client app)
+CREATE POLICY IF NOT EXISTS "Upsert debates" ON debates
+    FOR INSERT WITH CHECK (true);
+CREATE POLICY IF NOT EXISTS "Update debates" ON debates
+    FOR UPDATE USING (true);
+
+

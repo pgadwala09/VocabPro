@@ -15,8 +15,9 @@ export type VocabInsights = {
 async function callOpenAI(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<any | null> {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
   const proxy = import.meta.env.VITE_OPENAI_PROXY as string | undefined;
-  const url = (proxy || 'https://api.openai.com') + '/v1/chat/completions';
-  if (!apiKey && !proxy) return null;
+  const usingProxy = !!proxy;
+  const url = usingProxy ? `${proxy}/api/openai/chat` : `https://api.openai.com/v1/chat/completions`;
+  if (!apiKey && !usingProxy) return null;
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -39,6 +40,63 @@ async function callOpenAI(messages: Array<{ role: 'system' | 'user' | 'assistant
   } catch {
     return null;
   }
+}
+
+// Lightweight text helper for prompts that should return plain text
+async function callOpenAIText(
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  options?: { temperature?: number; max_tokens?: number }
+): Promise<string | null> {
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
+  const proxy = import.meta.env.VITE_OPENAI_PROXY as string | undefined;
+  const usingProxy = !!proxy;
+  const url = usingProxy ? `${proxy}/api/openai/chat` : `https://api.openai.com/v1/chat/completions`;
+  if (!apiKey && !usingProxy) return null;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages,
+        temperature: options?.temperature ?? 0.6,
+        max_tokens: options?.max_tokens ?? 220,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content as string | undefined;
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+// Generate a short debate turn for a given side. When opponentLast is provided,
+// produce a rebuttal that references it explicitly.
+export async function generateDebateTurn(
+  side: 'pro' | 'con',
+  topic: string,
+  opponentLast?: string | null
+): Promise<string | null> {
+  const system = {
+    role: 'system' as const,
+    content:
+      'You are a world-class competitive debater. Produce a SINGLE short turn (2–4 concise sentences, 8–12 seconds when spoken). Be persuasive, concrete, and avoid meta-language. No headings or labels. No prefaces like "Here is". Output plain text only.'
+  };
+  const roleInstruction = side === 'pro'
+    ? 'Take the PRO position and deliver a crisp opening that frames the issue and gives 1–2 concrete benefits or pieces of evidence.'
+    : 'Take the CON position and rebut the opponent directly. Call out a flaw or assumption in their argument, then present a counterpoint with 1 example or impact.';
+  const user = {
+    role: 'user' as const,
+    content: `Topic: ${topic}
+${opponentLast ? `Opponent just said: ${opponentLast}
+` : ''}Task: ${roleInstruction}`,
+  };
+  return await callOpenAIText([system, user], { temperature: 0.7, max_tokens: 180 });
 }
 
 export async function analyzeDebateTranscript(transcript: string, topic: string): Promise<DebateInsights | null> {
