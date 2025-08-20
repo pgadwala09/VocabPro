@@ -66,4 +66,28 @@ export async function openAiTts(text: string): Promise<string | null> {
   }
 }
 
+export async function googleCloudTts(
+  text: string,
+  opts?: { base?: string; voiceName?: string; languageCode?: string; speakingRate?: number }
+): Promise<string | null> {
+  const base = opts?.base || (import.meta.env.VITE_GCP_TTS_PROXY || 'http://127.0.0.1:8789');
+  try {
+    const r = await fetch(base + '/gcp/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        voiceName: opts?.voiceName || 'en-US-Standard-A',
+        languageCode: opts?.languageCode,
+        speakingRate: opts?.speakingRate || 1.0,
+      })
+    });
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+  } catch {
+    return null;
+  }
+}
+
 

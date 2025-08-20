@@ -30,6 +30,7 @@ import { NetworkTest } from './components/NetworkTest';
 import MediaRecorderTest from './components/MediaRecorderTest';
 import PeerTest from './components/PeerTest';
 import ChartsDemo from './components/ChartsDemo';
+import LiveDebatesStreamlit from './components/LiveDebatesStreamlit';
 
 export interface LibraryItem {
   name: string;
@@ -188,6 +189,15 @@ function App() {
               <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
               <Route path="/dictation-quiz" element={<DictationQuiz />} />
               <Route path="/image-spell" element={<ImageSpell />} />
+              <Route path="/debates" element={user ? <Debates /> : <Navigate to="/login" />} />
+              <Route path="/live-debates" element={<LiveDebatesStreamlit />} />
+              <Route path="/debate-tournament" element={user ? <DebateTournament /> : <Navigate to="/login" />} />
+              <Route path="/test-integrations" element={<IntegrationTest />} />
+              <Route path="/signup-debug" element={<SignupDebug />} />
+              <Route path="/network-test" element={<NetworkTest />} />
+              <Route path="/mediarecorder-test" element={<MediaRecorderTest />} />
+              <Route path="/peer-test" element={<PeerTest />} />
+              <Route path="/charts-demo" element={<ChartsDemo />} />
               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>
