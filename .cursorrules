@@ -1,0 +1,34 @@
+# Cursor Rules for VocabPro MCP Integration
+
+## MCP Server Configuration
+- MCP server is available at `mcp-server.js`
+- Run with: `npm run mcp:server`
+- Supports debate requests, vocabulary management, and AI interactions
+
+## Available MCP Tools
+1. `send_debate_request` - Send debate requests to AI
+2. `fetch_debate_history` - Get user debate history
+3. `generate_vocabulary_flashcards` - Create flashcards for words
+4. `analyze_pronunciation` - Analyze pronunciation from audio
+5. `search_vocabulary` - Search for word definitions
+
+## Environment Variables Required
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY
+- VITE_OPENAI_API_KEY
+- VITE_N8N_BASE_URL (optional)
+
+## Project Structure
+- Frontend: React + TypeScript + Vite
+- Backend: Node.js proxy servers
+- Database: Supabase
+- AI: OpenAI integration
+- MCP: Custom server for tool integration
+
+## Development Commands
+- `npm run dev` - Start development server
+- `npm run mcp:server` - Start MCP server
+- `npm run build` - Build for production
+- `npm run proxy:openai` - Start OpenAI proxy
+- `npm run proxy:eleven` - Start ElevenLabs proxy
+- `npm run proxy:gcp` - Start Google Cloud TTS proxy

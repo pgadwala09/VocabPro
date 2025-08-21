@@ -4,7 +4,7 @@ import { signIn, resetPassword } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 interface LoginPageProps {
-  onBack: () => void;
+  onBack?: () => void;
   onSignupClick?: () => void;
   onLoginSuccess?: () => void;
 }
@@ -82,7 +82,7 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
       {/* Back Button */}
       <div className="absolute top-8 left-8 z-10">
         <button
-          onClick={onBack}
+          onClick={() => navigate('/')}
           className="flex items-center space-x-2 text-white/80 hover:text-white transition-colors duration-300 group"
         >
           <div className="w-10 h-10 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:bg-white/20 transition-all duration-300">
@@ -213,7 +213,7 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
                 <p className="text-gray-300">
                   Don't have an account?{' '}
                   <button 
-                    onClick={onSignupClick}
+                    onClick={() => navigate('/signup')}
                     disabled={isLoading}
                     className="text-purple-300 hover:text-purple-200 transition-colors duration-300 font-semibold disabled:opacity-50"
                   >

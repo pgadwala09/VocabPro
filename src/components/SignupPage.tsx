@@ -4,7 +4,7 @@ import { Eye, EyeOff, ArrowLeft, Brain, AlertCircle, CheckCircle } from 'lucide-
 import { signUp } from '../lib/supabase';
 
 interface SignupPageProps {
-  onBack: () => void;
+  onBack?: () => void;
   onLoginClick?: () => void;
   onSignupSuccess?: () => void;
 }
@@ -83,7 +83,7 @@ function SignupPage({ onBack, onLoginClick, onSignupSuccess }: SignupPageProps) 
       {/* Back Button */}
       <div className="absolute top-8 left-8 z-10">
         <button
-          onClick={onBack}
+          onClick={() => navigate('/')}
           className="flex items-center space-x-2 text-white/80 hover:text-white transition-colors duration-300 group"
         >
           <div className="w-10 h-10 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:bg-white/20 transition-all duration-300">
@@ -224,7 +224,7 @@ function SignupPage({ onBack, onLoginClick, onSignupSuccess }: SignupPageProps) 
                 <p className="text-gray-300">
                   Already have an account?{' '}
                   <button 
-                    onClick={onLoginClick}
+                    onClick={() => navigate('/login')}
                     disabled={isLoading}
                     className="text-purple-300 hover:text-purple-200 transition-colors duration-300 font-semibold disabled:opacity-50"
                   >

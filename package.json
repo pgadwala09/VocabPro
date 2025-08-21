@@ -10,13 +10,16 @@
     "preview": "vite preview",
     "proxy:eleven": "node server/elevanlabs-proxy.js",
     "proxy:openai": "node server/openai-proxy.js",
-    "proxy:gcp": "node server/gcp-tts-proxy.js"
+    "proxy:gcp": "node server/gcp-tts-proxy.js",
+    "mcp:server": "node mcp-server.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
-    "@supabase/supabase-js": "^2.39.0",
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "@supabase/supabase-js": "^2.55.0",
     "@types/peerjs": "^0.0.30",
     "audio-recorder-polyfill": "^0.4.1",
+    "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "chrono-node": "^2.8.4",
     "emoji-picker-react": "^4.9.7",

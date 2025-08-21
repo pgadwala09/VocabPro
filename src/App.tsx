@@ -31,6 +31,9 @@ import MediaRecorderTest from './components/MediaRecorderTest';
 import PeerTest from './components/PeerTest';
 import ChartsDemo from './components/ChartsDemo';
 import LiveDebatesStreamlit from './components/LiveDebatesStreamlit';
+import DebateInterface from './components/DebateInterface';
+import DebateTestPage from './components/DebateTestPage';
+import EnvironmentWarning from './components/EnvironmentWarning';
 
 export interface LibraryItem {
   name: string;
@@ -172,10 +175,11 @@ function App() {
     <FeedbackProvider>
       <VocabularyProvider>
         <RecordingProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
-              <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
+                  <BrowserRouter>
+          <EnvironmentWarning />
+          <Routes>
+              <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
+              <Route path="/signup" element={<SignupPage onSignupSuccess={handleSignupSuccess} />} />
               <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
               <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
               <Route path="/jamsessions" element={user ? <JamSessions /> : <Navigate to="/login" />} />
@@ -197,8 +201,10 @@ function App() {
               <Route path="/network-test" element={<NetworkTest />} />
               <Route path="/mediarecorder-test" element={<MediaRecorderTest />} />
               <Route path="/peer-test" element={<PeerTest />} />
-              <Route path="/charts-demo" element={<ChartsDemo />} />
-              <Route path="/*" element={<LandingPage />} />
+                             <Route path="/charts-demo" element={<ChartsDemo />} />
+               <Route path="/debate-interface" element={<DebateInterface />} />
+               <Route path="/debate-test" element={<DebateTestPage />} />
+               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>
         </RecordingProvider>
