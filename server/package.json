@@ -1,0 +1,17 @@
+{
+  "name": "vocabpro-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "elevanlabs-proxy.js",
+  "scripts": {
+    "start": "node elevanlabs-proxy.js",
+    "start-openai": "node openai-proxy.js",
+    "start-gcp": "node gcp-tts-proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.3.1"
+  }
+}
+

@@ -42,7 +42,8 @@ app.post('/elevenlabs/tts', async (req, res) => {
       return res.status(r.status).send(body || 'tts_error');
     }
     res.setHeader('content-type', 'audio/mpeg');
-    r.body.pipe(res);
+    const buffer = await r.arrayBuffer();
+    res.send(Buffer.from(buffer));
   } catch (e) {
     res.status(500).json({ error: 'proxy_error', message: e?.message || 'unknown' });
   }
@@ -122,7 +123,8 @@ app.post('/elevenlabs/agent-turn', async (req, res) => {
     }
 
     res.setHeader('content-type', 'audio/mpeg');
-    audioResp.body.pipe(res);
+    const buffer = await audioResp.arrayBuffer();
+    res.send(Buffer.from(buffer));
   } catch (e) {
     res.status(500).json({ error: 'proxy_error', message: e?.message || 'unknown' });
   }
@@ -149,7 +151,8 @@ app.post('/elevenlabs/s2s', upload.single('file'), async (req, res) => {
       return res.status(r.status).send(errText);
     }
     res.setHeader('content-type', 'audio/mpeg');
-    r.body.pipe(res);
+    const buffer = await r.arrayBuffer();
+    res.send(Buffer.from(buffer));
   } catch (e) { res.status(500).json({ error: 'proxy_error' }); }
 });
 
