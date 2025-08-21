@@ -77,7 +77,7 @@ export async function googleCloudTts(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         text,
-        voiceName: opts?.voiceName || 'en-US-Standard-A',
+        voiceName: opts?.voiceName || (import.meta.env.VITE_GCP_VOICE_NAME || 'en-US-Standard-F'),
         languageCode: opts?.languageCode,
         speakingRate: opts?.speakingRate || 1.0,
       })
