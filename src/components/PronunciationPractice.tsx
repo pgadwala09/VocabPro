@@ -83,7 +83,7 @@ const PronunciationPractice: React.FC = () => {
     ? fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
 
-  return (
+     return (
     <div className="min-h-[160vh] bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex flex-col pb-16">
       {/* Header */}
       <header className="flex items-center justify-between px-16 py-4 bg-white/10 shadow-md">
@@ -154,102 +154,102 @@ const PronunciationPractice: React.FC = () => {
             {/* Tab Content */}
             <div className="w-full flex justify-center">
               {activeTab === 'pronunciation' && (
-                <div className="flex flex-col items-center space-y-8">
-                  <div className="text-center">
-                    <h2 className="text-5xl font-bold text-white mb-4">Echo Match</h2>
-                    <div className="bg-gradient-to-r from-white/30 to-white/10 backdrop-blur-sm rounded-xl px-10 py-4 mb-4 border border-white/40 inline-block shadow-2xl">
+    <div className="flex flex-col items-center space-y-8">
+      <div className="text-center">
+        <h2 className="text-5xl font-bold text-white mb-4">Echo Match</h2>
+        <div className="bg-gradient-to-r from-white/30 to-white/10 backdrop-blur-sm rounded-xl px-10 py-4 mb-4 border border-white/40 inline-block shadow-2xl">
                       <span className="text-5xl md:text-6xl font-black text-transparent bg-gradient-to-r from-blue-200 via-white to-purple-200 bg-clip-text tracking-wider drop-shadow-lg animate-pulse">{currentWord}</span>
-                    </div>
-                  </div>
+      </div>
+        </div>
 
-                  <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-6 relative z-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-                      {/* Left Card: Your Pronunciation */}
-                      <div className="bg-white/10 rounded-xl border border-white/20 p-4 flex flex-col justify-between">
-                        <div>
-                          <div className="text-xl text-blue-200 mb-3">Your Pronunciation</div>
-                          <p className="text-sm text-blue-200/80 mb-4">Record and practice.</p>
-                        </div>
-                        <div className="w-full flex items-center justify-center gap-3">
-                          <button
-                            onClick={handlePlayAudio}
-                            disabled={!audioURL || isPlaying}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-500 disabled:opacity-50 flex items-center justify-center"
-                            aria-label="Play Recording"
-                            title="Play Recording"
-                          >
-                            <Play className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={isRecording ? handleStopRecording : handleStartRecording}
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg shadow hover:bg-red-500 flex items-center justify-center"
-                            aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
-                            title={isRecording ? 'Stop Recording' : 'Start Recording'}
-                          >
-                            {isRecording ? (
-                              <StopCircle className="w-5 h-5" />
-                            ) : (
-                              <Mic className="w-5 h-5" />
-                            )}
-                          </button>
-                          <button
-                            onClick={handleClearRecording}
-                            className="px-4 py-2 bg-gray-600 text-white rounded-lg shadow hover:bg-gray-500 flex items-center justify-center"
-                            aria-label="Clear"
-                            title="Clear"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
+      <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-6 relative z-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+          {/* Left Card: Your Pronunciation */}
+          <div className="bg-white/10 rounded-xl border border-white/20 p-4 flex flex-col justify-between">
+            <div>
+              <div className="text-xl text-blue-200 mb-3">Your Pronunciation</div>
+              <p className="text-sm text-blue-200/80 mb-4">Record and practice.</p>
+        </div>
+            <div className="w-full flex items-center justify-center gap-3">
+          <button
+            onClick={handlePlayAudio}
+            disabled={!audioURL || isPlaying}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-500 disabled:opacity-50 flex items-center justify-center"
+                aria-label="Play Recording"
+                title="Play Recording"
+          >
+                <Play className="w-5 h-5" />
+          </button>
+          <button
+            onClick={isRecording ? handleStopRecording : handleStartRecording}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg shadow hover:bg-red-500 flex items-center justify-center"
+                aria-label={isRecording ? 'Stop Recording' : 'Start Recording'}
+                title={isRecording ? 'Stop Recording' : 'Start Recording'}
+          >
+            {isRecording ? (
+                  <StopCircle className="w-5 h-5" />
+            ) : (
+                  <Mic className="w-5 h-5" />
+            )}
+          </button>
+          <button
+            onClick={handleClearRecording}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg shadow hover:bg-gray-500 flex items-center justify-center"
+                aria-label="Clear"
+                title="Clear"
+          >
+                <X className="w-5 h-5" />
+          </button>
+        </div>
+          </div>
 
                       {/* Right Card: AI Pronunciation */}
-                      <div className="bg-white/10 rounded-xl border border-white/20 p-4 flex flex-col justify-between">
-                        <div>
+          <div className="bg-white/10 rounded-xl border border-white/20 p-4 flex flex-col justify-between">
+            <div>
                           <div className="text-xl text-blue-200 mb-3">AI Pronunciation</div>
                           <p className="text-sm text-gray-300">Coming soon...</p>
-                        </div>
-                        <div className="w-full flex items-center justify-center gap-3">
-                          <button
+        </div>
+            <div className="w-full flex items-center justify-center gap-3">
+              <button
                             disabled
                             className="px-4 py-2 bg-gray-600 text-white rounded-lg shadow opacity-50 cursor-not-allowed"
-                          >
-                            Play AI Voice
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+              >
+                Play AI Voice
+              </button>
+            </div>
                 </div>
+              </div>
+          </div>
+        </div>
               )}
               
               {activeTab === 'flashcards' && (
-                <div className="flex flex-col items-center space-y-8">
-                  <h2 className="text-5xl font-bold text-white mb-8">Flash Cards</h2>
-                  <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
+     <div className="flex flex-col items-center space-y-8">
+       <h2 className="text-5xl font-bold text-white mb-8">Flash Cards</h2>
+       <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
                     <p className="text-white text-center">Flashcards coming soon...</p>
                   </div>
                 </div>
               )}
 
               {activeTab === 'tongue-twister' && (
-                <div className="flex flex-col items-center space-y-8">
-                  <h2 className="text-5xl font-bold text-white mb-8">Tongue Twister</h2>
+     <div className="flex flex-col items-center space-y-8">
+       <h2 className="text-5xl font-bold text-white mb-8">Tongue Twister</h2>
                   <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
                     <p className="text-white text-center">Tongue twisters coming soon...</p>
-                  </div>
-                </div>
+         </div>
+         </div>
               )}
 
               {activeTab === 'sound-safari' && (
-                <div className="flex flex-col items-center space-y-8">
-                  <h2 className="text-5xl font-bold text-white mb-8">Sound Safari</h2>
+     <div className="flex flex-col items-center space-y-8">
+       <h2 className="text-5xl font-bold text-white mb-8">Sound Safari</h2>
                   <div className="w-[650px] h-[420px] bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-8">
                     <p className="text-white text-center">Sound safari coming soon...</p>
-                  </div>
-                </div>
-              )}
-            </div>
+         </div>
+           </div>
+         )}
+             </div>
           </div>
 
           {/* Right Sidebar */}
@@ -264,17 +264,17 @@ const PronunciationPractice: React.FC = () => {
               <p className="text-lg text-blue-200 mb-6">
                 Track your pronunciation progress and get personalized feedback to improve your speaking skills.
               </p>
-              <div className="space-y-4">
-                <div className="bg-white/20 rounded-lg p-4">
+                <div className="space-y-4">
+                  <div className="bg-white/20 rounded-lg p-4">
                   <h4 className="font-semibold text-white mb-2">Current Word</h4>
                   <div className="text-2xl font-bold text-green-400">{currentWord}</div>
-                </div>
-                <div className="bg-white/20 rounded-lg p-4">
+                  </div>
+                  <div className="bg-white/20 rounded-lg p-4">
                   <h4 className="font-semibold text-white mb-2">Words Available</h4>
                   <div className="text-2xl font-bold text-blue-400">{vocabList ? vocabList.length : 0}</div>
+                  </div>
+                  </div>
                 </div>
-              </div>
-            </div>
           </div>
         </div>
       </main>
@@ -300,4 +300,4 @@ const PronunciationPractice: React.FC = () => {
   );
 };
 
-export default PronunciationPractice;
+export default PronunciationPractice; 

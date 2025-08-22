@@ -36,24 +36,24 @@ const LandingPage = () => {
                 </a>
                                  <a href="#contact" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105">
                    Our Story
-                 </a>
+                </a>
               </div>
-                             {/* Login/Sign Up - Top Right */}
+              {/* Login/Sign Up - Top Right */}
                <div className="hidden md:flex items-center space-x-4 pr-2 sm:pr-4 lg:pr-6">
-                 <button 
-                   onClick={() => navigate('/login')}
+                <button 
+                  onClick={() => navigate('/login')}
                    className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105"
-                 >
-                   Login
-                 </button>
-                 <button 
-                   onClick={() => navigate('/signup')}
+                >
+                  Login
+                </button>
+                <button 
+                  onClick={() => navigate('/signup')}
                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                 >
-                   Sign Up
-                 </button>
-               </div>
-               {/* Mobile Menu Button */}
+                >
+                  Sign Up
+                </button>
+              </div>
+              {/* Mobile Menu Button */}
                <div className="md:hidden pr-2 sm:pr-4 lg:pr-6">
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -78,7 +78,7 @@ const LandingPage = () => {
                   </a>
                                      <a href="#contact" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 px-4 hover:bg-purple-50 rounded-lg py-2">
                      Our Story
-                   </a>
+                  </a>
                   <button 
                     onClick={() => navigate('/login')}
                     className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 px-4 text-left hover:bg-purple-50 rounded-lg py-2"
@@ -113,17 +113,17 @@ const LandingPage = () => {
           </div>
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
             Stories that <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Speak.</span><br />
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Debates that Dazzle.</span>
-          </h1>
+          <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Debates that Dazzle.</span>
+        </h1>
           <p className="text-xl md:text-2xl text-gray-200 text-center max-w-3xl mb-8 leading-relaxed">
-            From scrambled letters to structured arguments, build power through play and performance.
-          </p>
+          From scrambled letters to structured arguments, build power through play and performance.
+        </p>
                      <button 
              onClick={() => navigate('/login')}
              className="px-10 py-5 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl font-semibold text-xl shadow-2xl hover:from-purple-600 hover:to-blue-600 transition-all duration-300 transform hover:scale-105 hover:shadow-purple-500/25"
            >
-             Start Speaking today!!!
-           </button>
+          Start Speaking today!!!
+        </button>
         </div>
       </section>
 
@@ -173,7 +173,7 @@ const LandingPage = () => {
             <div className="group bg-white rounded-3xl shadow-xl p-8 flex flex-col items-center border-t-4 border-pink-400 hover:shadow-2xl hover:scale-105 transition-all duration-500 hover:border-pink-500">
               <div className="w-16 h-16 bg-gradient-to-br from-pink-500 to-pink-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                 <UserCheck className="w-8 h-8 text-white" />
-              </div>
+            </div>
               <h3 className="text-xl font-bold text-pink-800 mb-4 text-center">Interactive AI Coach</h3>
               <p className="text-gray-600 text-center leading-relaxed">Learn through fun, AI-driven interactions with personalized timers, real-time feedback, and dynamic practice sessions tailored to your pace.</p>
             </div>
@@ -182,7 +182,7 @@ const LandingPage = () => {
             <div className="group bg-white rounded-3xl shadow-xl p-8 flex flex-col items-center border-t-4 border-green-400 hover:shadow-2xl hover:scale-105 transition-all duration-500 hover:border-green-500">
               <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                 <Volume2 className="w-8 h-8 text-white" />
-              </div>
+            </div>
               <h3 className="text-xl font-bold text-green-800 mb-4 text-center">Smart Spell & Pronounce Tool</h3>
               <p className="text-gray-600 text-center leading-relaxed">Practice accurate pronunciation, receive correct spellings, and learn word meanings — all in one interactive experience.</p>
             </div>
@@ -191,7 +191,7 @@ const LandingPage = () => {
             <div className="group bg-white rounded-3xl shadow-xl p-8 flex flex-col items-center border-t-4 border-yellow-400 hover:shadow-2xl hover:scale-105 transition-all duration-500 hover:border-yellow-500">
               <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                 <Share2 className="w-8 h-8 text-white" />
-              </div>
+            </div>
               <h3 className="text-xl font-bold text-yellow-800 mb-4 text-center">Instant Sharing</h3>
               <p className="text-gray-600 text-center leading-relaxed">Automatically share your progress and insights across WhatsApp, Email, Facebook, Twitter, and more — celebrate your wins and stay connected!</p>
             </div>
@@ -212,7 +212,7 @@ const LandingPage = () => {
              <Sparkles className="w-12 h-12 text-white mx-auto mb-4" />
              <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 drop-shadow-lg">Features</h2>
             <p className="text-xl text-blue-100 max-w-2xl mx-auto">Powerful tools designed to accelerate your learning journey</p>
-          </div>
+        </div>
           
           <div className="grid md:grid-cols-3 gap-10">
             <div className="group bg-white/10 backdrop-blur-lg rounded-3xl p-10 shadow-2xl flex flex-col items-center border border-white/20 hover:border-purple-400/50 hover:bg-white/15 transition-all duration-500 hover:scale-105">
@@ -386,8 +386,8 @@ const LandingPage = () => {
                </div>
              </div>
            </div>
-         </div>
-       </footer>
+        </div>
+      </footer>
     </div>
   );
 };
