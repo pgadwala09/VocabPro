@@ -20,7 +20,7 @@ import SpellingPractice from './components/SpellingPractice';
 import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
 import DictationQuiz from './components/DictationQuiz';
 import ImageSpell from './components/ImageSpell';
-// import PronunciationPractice from './components/PronunciationPractice';
+import PronunciationPractice from './components/PronunciationPractice';
 import JamSessions from './components/JamSessions';
 import Debates from './components/Debates';
 import DebateTournament from './components/DebateTournament';
@@ -183,8 +183,7 @@ function App() {
               <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
               <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
               <Route path="/jamsessions" element={user ? <JamSessions /> : <Navigate to="/login" />} />
-              {/* Temporarily disabled until merge conflicts in PronunciationPractice are resolved */}
-              {/* <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} /> */}
+              <Route path="/pronunciation" element={user ? <PronunciationPractice /> : <Navigate to="/login" />} />
               <Route path="/spelling-practice" element={<SpellingPracticeTrainer />} />
               <Route path="/insights" element={<Insights />} />
               <Route path="/tongue-twister" element={<TongueTwisterChallenge />} />

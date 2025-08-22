@@ -12,8 +12,8 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar, Line, Pie } from 'react-chartjs-2';
-// import { useNavigate } from 'react-router-dom';
-import { Mic, StopCircle, Brain, Sparkles, FileText, BarChart3, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mic, StopCircle, Brain, Sparkles, FileText, BarChart3, Plus, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { firecrawlSearch, firecrawlScrape } from '../lib/firecrawl';
@@ -252,7 +252,7 @@ const JamSessions: React.FC = () => {
   // Preset content feature removed
 
   const { user } = useAuth();
-  // const navigate = useNavigate();
+  const navigate = useNavigate();
 
   // Character options with icons
   const characterOptions = [
@@ -1609,6 +1609,14 @@ ${createdContent.content.split('\n').slice(0, 8).join('\n')}`
       {/* Header */}
       <header className="flex items-center justify-between px-16 py-4 bg-white/10 shadow-md">
         <div className="flex items-center flex-1">
+          {/* Back to Dashboard Button */}
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="mr-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg font-semibold transition-all duration-300 flex items-center gap-2 border border-white/30 hover:border-white/50"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Back to Dashboard
+          </button>
           <div className="relative">
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 via-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-300">
               <Brain className="w-7 h-7 text-white" />

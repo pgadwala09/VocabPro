@@ -12,10 +12,10 @@ const LandingPage = () => {
       <header className="relative bg-white shadow-sm overflow-hidden">
         {/* Navigation */}
         <nav className="relative z-10 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="w-full">
             <div className="flex justify-between items-center h-20 bg-white">
-              {/* Logo - Top Left with Brain Icon */}
-              <div className="flex items-center space-x-2">
+              {/* Logo - Extreme Left with Brain Icon */}
+              <div className="flex items-center space-x-2 flex-shrink-0 pl-2 sm:pl-4 lg:pl-6">
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
                   <Brain className="w-5 h-5 text-white" />
                 </div>
@@ -34,27 +34,27 @@ const LandingPage = () => {
                 <a href="#about" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105">
                   Resources
                 </a>
-                <a href="#contact" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105">
-                  Company
-                </a>
+                                 <a href="#contact" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105">
+                   Our Story
+                 </a>
               </div>
-              {/* Login/Sign Up - Top Right */}
-              <div className="hidden md:flex items-center space-x-4">
-                <button 
-                  onClick={() => navigate('/login')}
-                  className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105"
-                >
-                  Login
-                </button>
-                <button 
-                  onClick={() => navigate('/signup')}
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                >
-                  Sign Up
-                </button>
-              </div>
-              {/* Mobile Menu Button */}
-              <div className="md:hidden">
+                             {/* Login/Sign Up - Top Right */}
+               <div className="hidden md:flex items-center space-x-4 pr-2 sm:pr-4 lg:pr-6">
+                 <button 
+                   onClick={() => navigate('/login')}
+                   className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 hover:scale-105"
+                 >
+                   Login
+                 </button>
+                 <button 
+                   onClick={() => navigate('/signup')}
+                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                 >
+                   Sign Up
+                 </button>
+               </div>
+               {/* Mobile Menu Button */}
+               <div className="md:hidden pr-2 sm:pr-4 lg:pr-6">
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                   className="text-gray-700 hover:text-purple-600 transition-all duration-300 hover:scale-105"
@@ -76,9 +76,9 @@ const LandingPage = () => {
                   <a href="#about" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 px-4 hover:bg-purple-50 rounded-lg py-2">
                     Resources
                   </a>
-                  <a href="#contact" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 px-4 hover:bg-purple-50 rounded-lg py-2">
-                    Company
-                  </a>
+                                     <a href="#contact" className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 px-4 hover:bg-purple-50 rounded-lg py-2">
+                     Our Story
+                   </a>
                   <button 
                     onClick={() => navigate('/login')}
                     className="text-gray-700 hover:text-purple-600 font-medium transition-all duration-300 px-4 text-left hover:bg-purple-50 rounded-lg py-2"
@@ -118,23 +118,26 @@ const LandingPage = () => {
           <p className="text-xl md:text-2xl text-gray-200 text-center max-w-3xl mb-8 leading-relaxed">
             From scrambled letters to structured arguments, build power through play and performance.
           </p>
-          <button className="px-10 py-5 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl font-semibold text-xl shadow-2xl hover:from-purple-600 hover:to-blue-600 transition-all duration-300 transform hover:scale-105 hover:shadow-purple-500/25">
-            Start Speaking today!!!
-          </button>
+                     <button 
+             onClick={() => navigate('/login')}
+             className="px-10 py-5 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl font-semibold text-xl shadow-2xl hover:from-purple-600 hover:to-blue-600 transition-all duration-300 transform hover:scale-105 hover:shadow-purple-500/25"
+           >
+             Start Speaking today!!!
+           </button>
         </div>
       </section>
 
-      {/* Why Choose VocabPro Section */}
-      <section className="py-20 bg-gradient-to-br from-purple-50 to-blue-50 relative overflow-hidden">
+             {/* Why Choose VocabPro Section */}
+       <section className="py-12 bg-gradient-to-br from-purple-50 to-blue-50 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-10 right-10 w-32 h-32 bg-purple-200/30 rounded-full blur-2xl"></div>
           <div className="absolute bottom-10 left-10 w-40 h-40 bg-blue-200/30 rounded-full blur-2xl"></div>
         </div>
         
         <div className="max-w-7xl mx-auto px-4 relative z-10">
-          <div className="text-center mb-16">
-            <Sparkles className="w-12 h-12 text-purple-600 mx-auto mb-4" />
-            <h2 className="text-4xl md:text-5xl font-bold text-purple-900 mb-4">Why Choose VocabPro</h2>
+                     <div className="text-center mb-16">
+             <Zap className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+             <h2 className="text-3xl md:text-4xl font-bold text-purple-900 mb-4">Why Choose VocabPro</h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">Experience the difference with our innovative learning approach</p>
           </div>
           
@@ -196,8 +199,8 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Enhanced Features Section */}
-      <section className="py-24 bg-gradient-to-br from-purple-700 via-blue-700 to-indigo-800 relative overflow-hidden">
+             {/* Enhanced Features Section */}
+       <section className="py-12 bg-gradient-to-br from-purple-700 via-blue-700 to-indigo-800 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="w-96 h-96 bg-purple-400/20 rounded-full blur-3xl absolute -top-32 -left-32 animate-pulse"></div>
           <div className="w-96 h-96 bg-blue-400/20 rounded-full blur-3xl absolute -bottom-32 -right-32 animate-pulse delay-1000"></div>
@@ -205,9 +208,9 @@ const LandingPage = () => {
         </div>
         
         <div className="max-w-7xl mx-auto px-4 relative z-10">
-          <div className="text-center mb-16">
-            <Zap className="w-12 h-12 text-white mx-auto mb-4" />
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 drop-shadow-lg">Features</h2>
+                     <div className="text-center mb-16">
+             <Sparkles className="w-12 h-12 text-white mx-auto mb-4" />
+             <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 drop-shadow-lg">Features</h2>
             <p className="text-xl text-blue-100 max-w-2xl mx-auto">Powerful tools designed to accelerate your learning journey</p>
           </div>
           
@@ -239,8 +242,8 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Enhanced Testimonials Section */}
-      <section className="py-24 bg-gradient-to-br from-blue-50 to-purple-100 relative overflow-hidden">
+             {/* Enhanced Testimonials Section */}
+       <section className="py-12 bg-gradient-to-br from-blue-50 to-purple-100 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-20 left-20 w-32 h-32 bg-purple-200/40 rounded-full blur-2xl"></div>
           <div className="absolute bottom-20 right-20 w-40 h-40 bg-blue-200/40 rounded-full blur-2xl"></div>
@@ -284,20 +287,107 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Enhanced Footer Section */}
-      <footer className="bg-white border-t border-gray-200 py-12">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="flex items-center space-x-3 mb-4 md:mb-0">
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
-                <Brain className="w-5 h-5 text-white" />
+                            {/* Enhanced Footer Section */}
+        <footer className="bg-blue-900 text-white py-16">
+          <div className="max-w-7xl mx-auto px-4">
+            {/* Main Footer Content */}
+            <div className="flex flex-col lg:flex-row gap-8 mb-8">
+              {/* Logo and Description - Extreme Left */}
+              <div className="lg:w-1/4">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
+                    <Brain className="w-6 h-6 text-white" />
+                  </div>
+                  <span className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Vocab Pro</span>
+                </div>
+                <p className="text-gray-300 text-lg leading-relaxed">
+                  Transform your vocabulary learning experience with AI-powered tools, interactive exercises, and personalized feedback.
+                </p>
               </div>
-              <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">Vocab Pro</span>
+              
+              {/* All Links in One Row */}
+              <div className="lg:w-3/4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                  {/* Company Links */}
+                  <div>
+                    <h3 className="font-bold text-white text-lg mb-4">Company</h3>
+                    <div className="space-y-2">
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">About</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Careers</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Press</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Blog</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Meet our Instructors</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">VocabPro Science</a>
+                    </div>
+                  </div>
+                  
+                  {/* Organizations Links */}
+                  <div>
+                    <h3 className="font-bold text-white text-lg mb-4">Organizations</h3>
+                    <div className="space-y-2">
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Under 300</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">300+</a>
+                    </div>
+                  </div>
+                  
+                  {/* Help Links */}
+                  <div>
+                    <h3 className="font-bold text-white text-lg mb-4">Help</h3>
+                    <div className="space-y-2">
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">FAQ</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Contact Us</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Terms</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Privacy Policy</a>
+                    </div>
+                  </div>
+                  
+                  {/* Mobile & Apps Links */}
+                  <div>
+                    <h3 className="font-bold text-white text-lg mb-4">Mobile & Apps</h3>
+                    <div className="space-y-2">
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">iOS App</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Android App</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">iPhone Support</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">iPad Support</a>
+                      <a href="#" className="block text-gray-300 hover:text-white transition-colors duration-300 text-base">Mobile Web</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <span className="text-gray-500 text-lg">&copy; {new Date().getFullYear()} Vocab Pro. All rights reserved.</span>
-          </div>
-        </div>
-      </footer>
+           
+           {/* Bottom Section */}
+           <div className="border-t border-blue-700 pt-8">
+             <div className="flex flex-col md:flex-row items-center justify-between">
+               <span className="text-gray-300 text-base mb-4 md:mb-0">
+                 &copy; {new Date().getFullYear()} Vocab Pro. All rights reserved.
+               </span>
+               
+               {/* Social Links */}
+               <div className="flex items-center space-x-6">
+                 <a href="#" className="text-gray-300 hover:text-white transition-colors duration-300">
+                   <span className="sr-only">Facebook</span>
+                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                   </svg>
+                 </a>
+                 <a href="#" className="text-gray-300 hover:text-white transition-colors duration-300">
+                   <span className="sr-only">Twitter</span>
+                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                     <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84"/>
+                   </svg>
+                 </a>
+                 <a href="#" className="text-gray-300 hover:text-white transition-colors duration-300">
+                   <span className="sr-only">Instagram</span>
+                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                     <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 6.62 5.367 11.987 11.988 11.987 6.62 0 11.987-5.367 11.987-11.987C24.014 5.367 18.637.001 12.017.001zM8.449 16.988c-1.297 0-2.448-.49-3.323-1.297C4.198 14.895 3.708 13.744 3.708 12.447s.49-2.448 1.418-3.323c.875-.807 2.026-1.297 3.323-1.297s2.448.49 3.323 1.297c.928.875 1.418 2.026 1.418 3.323s-.49 2.448-1.418 3.244c-.875.807-2.026 1.297-3.323 1.297zm7.83-9.781c-.49 0-.928-.175-1.297-.49-.368-.315-.49-.753-.49-1.243 0-.49.122-.928.49-1.243.369-.315.807-.49 1.297-.49s.928.175 1.297.49c.368.315.49.753.49 1.243 0 .49-.122.928-.49 1.243-.369.315-.807.49-1.297.49z"/>
+                   </svg>
+                 </a>
+               </div>
+             </div>
+           </div>
+         </div>
+       </footer>
     </div>
   );
 };
