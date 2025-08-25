@@ -213,7 +213,11 @@ function LoginPage({ onBack, onSignupClick, onLoginSuccess }: LoginPageProps) {
                 <p className="text-gray-300">
                   Don't have an account?{' '}
                   <button 
+<<<<<<< HEAD
                     onClick={() => navigate('/signup')}
+=======
+                    onClick={onSignupClick}
+>>>>>>> origin/main
                     disabled={isLoading}
                     className="text-purple-300 hover:text-purple-200 transition-colors duration-300 font-semibold disabled:opacity-50"
                   >

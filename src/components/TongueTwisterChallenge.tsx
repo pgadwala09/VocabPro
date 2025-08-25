@@ -129,6 +129,7 @@ const TongueTwisterChallenge: React.FC<TongueTwisterChallengeProps> = ({ compact
             : 'Keep practicing! Focus on slowing down and enunciating.'
         );
         setShowFeedback(true);
+<<<<<<< HEAD
         // Generate feedback in new format and add to FeedbackContext
         const feedbackObj = {
           word: twister,
@@ -143,6 +144,8 @@ const TongueTwisterChallenge: React.FC<TongueTwisterChallengeProps> = ({ compact
           date: new Date().toISOString(),
         };
         addFeedback(feedbackObj);
+=======
+>>>>>>> origin/main
       };
       mediaRecorder.start();
       setIsRecording(true);

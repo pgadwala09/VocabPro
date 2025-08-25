@@ -244,5 +244,9 @@ export const InsightsSingleCard = () => {
   return <FeedbackCard feedback={latest} />;
 };
 
+<<<<<<< HEAD
 export default Insights; 
 
+=======
+export default Insights; 
+>>>>>>> origin/main

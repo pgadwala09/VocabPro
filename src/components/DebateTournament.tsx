@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+<<<<<<< HEAD
 import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -7,6 +8,17 @@ import { googleCloudTts } from '../lib/tts';
 import { generateDebateTurn } from '../lib/insights';
 import EmojiPickerLib from 'emoji-picker-react';
 
+=======
+import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy, Clock, Volume2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
+import { initializeDebate, getCurrentTurn, saveTurn } from '../api-routes';
+import EmojiPickerLib from 'emoji-picker-react';
+import OneOnOneDebate from './OneOnOneDebate';
+import ChatDebate from './ChatDebate';
+import DebateWithAI from './DebateWithAI';
+>>>>>>> origin/main
 
 interface DebateData {
   id: string;
@@ -22,6 +34,7 @@ interface DebateData {
 const DebateTournament: React.FC = () => {
   const navigate = useNavigate();
   const [currentDebate, setCurrentDebate] = useState<DebateData | null>(() => {
+<<<<<<< HEAD
     try {
       const savedDebate = localStorage.getItem('currentDebate');
       console.log('Loading debate data from localStorage:', savedDebate);
@@ -61,6 +74,40 @@ const DebateTournament: React.FC = () => {
   useEffect(() => { activeRoleRef.current = activeRole; }, [activeRole]);
   useEffect(() => { startedRef.current = isDebateStarted; }, [isDebateStarted]);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
+=======
+    const saved = localStorage.getItem('currentDebate');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved debate:', e);
+      }
+    }
+    // Create a default debate for immediate use
+    const defaultDebate: DebateData = {
+      id: 'default-debate-' + Date.now(),
+      topic: 'Technology in Education',
+      debateStyle: 'ai',
+      sideSelection: 'builder',
+      builderCharacter: 'AI',
+      breakerCharacter: 'AI',
+      duration: 5,
+      createdAt: new Date()
+    };
+    // Save the default debate to localStorage
+    localStorage.setItem('currentDebate', JSON.stringify(defaultDebate));
+    console.log('Created default debate:', defaultDebate);
+    // Show a brief notification to the user
+    setTimeout(() => {
+      alert('Welcome! A default debate has been created for you. You can start debating immediately or go back to create a custom debate.');
+    }, 500);
+    return defaultDebate;
+  });
+
+  const [activeTab, setActiveTab] = useState<'live' | 'chat' | 'ai'>('live');
+  const [builderTime, setBuilderTime] = useState(150);
+  const [breakerTime, setBreakerTime] = useState(150);
+>>>>>>> origin/main
   const [builderScore, setBuilderScore] = useState(0);
   const [breakerScore, setBreakerScore] = useState(0);
   const [participants, setParticipants] = useState(1);
@@ -72,12 +119,17 @@ const DebateTournament: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [summaryAudioUrl, setSummaryAudioUrl] = useState<string | null>(null);
   const [summaryUploading, setSummaryUploading] = useState(false);
+<<<<<<< HEAD
   const SUMMARY_BUCKET = 'debate-summaries';
+=======
+  const SUMMARY_BUCKET = 'debate summaries';
+>>>>>>> origin/main
   const debateAudioPartsRef = useRef<string[]>([]);
 
   // Single shared audio element to avoid overlapping playback
   const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+<<<<<<< HEAD
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -341,6 +393,38 @@ const DebateTournament: React.FC = () => {
     }>;
   }>>(JSON.parse(localStorage.getItem('chatMessages') || '[]'));
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+=======
+  const [speakingSide, setSpeakingSide] = useState<'pro' | 'con' | null>(null);
+  const [mutePro, setMutePro] = useState(false);
+  const [muteCon, setMuteCon] = useState(false);
+  const [testMode, setTestMode] = useState(false);
+  const [isUserTurn, setIsUserTurn] = useState(false);
+
+  // Initialize mute states when component mounts
+  useEffect(() => {
+    console.log('🔍 Component mounted - initializing mute states');
+    // Start with both speakers enabled by default
+    setMuteCon(false);
+    setMutePro(false);
+    setTestMode(false); // Let user control mute states
+    
+    console.log('✅ Initial mute states set: PRO = false, CON = false');
+  }, []);
+
+  // Debug effect to log mute state changes
+  useEffect(() => {
+    console.log('🔄 Mute state changed - muteCon:', muteCon, 'mutePro:', mutePro, 'testMode:', testMode);
+  }, [muteCon, mutePro, testMode]);
+
+  // Set up debate timing when currentDebate changes
+  useEffect(() => {
+    if (currentDebate) {
+      const halfDuration = Math.floor(currentDebate.duration * 30);
+      setBuilderTime(halfDuration);
+      setBreakerTime(halfDuration);
+    }
+  }, [currentDebate]);
+>>>>>>> origin/main
 
   const { user } = useAuth();
   const avatarUrl = user?.user_metadata?.avatar_url;
@@ -348,6 +432,7 @@ const DebateTournament: React.FC = () => {
   const initials = fullName
     ? fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+<<<<<<< HEAD
   const [uploading, setUploading] = useState(false);
   const SUPABASE_BUCKET = 'debate-recordings';
 
@@ -702,10 +787,15 @@ const DebateTournament: React.FC = () => {
 
   const handleBack = () => {
     // Clear the current debate data when going back
+=======
+
+  const handleBack = () => {
+>>>>>>> origin/main
     localStorage.removeItem('currentDebate');
     navigate('/debates');
   };
 
+<<<<<<< HEAD
   // Emoji picker component
   const EmojiPicker = ({ messageId, onEmojiSelect }: { messageId: string; onEmojiSelect: (msgId: string, emoji: string) => void }) => {
     const emojis = ['👍', '❤️', '😂', '😮', '😢', '😡', '👏', '🎉', '🔥', '💯', '🤔', '👀'];
@@ -936,10 +1026,41 @@ const DebateTournament: React.FC = () => {
           </div>
         )}
       </div>
+=======
+  const renderLiveDebateTab = () => {
+    if (!currentDebate) return null;
+
+    return (
+      <OneOnOneDebate
+        currentDebate={currentDebate}
+        isSpeaking={isSpeaking}
+        speakingSide={speakingSide}
+        mutePro={mutePro}
+        muteCon={muteCon}
+        setMutePro={setMutePro}
+        setMuteCon={setMuteCon}
+        remainingSeconds={null}
+        selectedMinutes={5}
+        selectedRound={1}
+        proArgument=""
+        conArgument=""
+        onGenerate={() => {
+          // The OneOnOneDebate component handles its own logic
+          console.log('🎤 1-on-1 debate initialized');
+        }}
+        onUserSpeak={() => {
+          // The OneOnOneDebate component handles its own logic
+          console.log('🎤 1-on-1 debate user interaction');
+        }}
+        voiceStatus="available"
+        isUserTurn={false}
+      />
+>>>>>>> origin/main
     );
   };
 
   const renderChatDebateTab = () => {
+<<<<<<< HEAD
     if (!currentDebate) {
       console.log('No current debate data available for chat');
       return (
@@ -1090,16 +1211,39 @@ const DebateTournament: React.FC = () => {
       </div>
     </div>
   );
+=======
+    if (!currentDebate) return null;
+
+    return (
+      <ChatDebate
+        currentDebate={currentDebate}
+        selectedMinutes={5}
+        selectedRound={1}
+        onBack={handleBack}
+      />
+    );
+  };
+
+  const renderAIDebateTab = () => {
+    if (!currentDebate) return null;
+
+    return <DebateWithAI currentDebate={currentDebate} />;
+>>>>>>> origin/main
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
         <div className="text-center">
+<<<<<<< HEAD
           <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
             <Trophy className="w-8 h-8 text-white" />
           </div>
           <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"></div>
+=======
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white text-xl">Loading debate...</p>
+>>>>>>> origin/main
         </div>
       </div>
     );
@@ -1144,6 +1288,7 @@ const DebateTournament: React.FC = () => {
         </div>
       </header>
 
+<<<<<<< HEAD
       <div className="flex justify-center pt-8 px-4">
         <div className="flex gap-4 bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-2">
           {([
@@ -1170,6 +1315,55 @@ const DebateTournament: React.FC = () => {
         <div className="w-full">
           {activeTab === 'live' && renderLiveDebateTab()}
           {activeTab === 'chat' && renderChatDebateTab()}
+=======
+      <main className="flex-1 flex justify-center pt-8 px-4 pb-8">
+        <div className="w-full max-w-7xl mx-auto space-y-8">
+          {/* Tab Navigation */}
+          <div className="flex justify-center mb-8">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-2">
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setActiveTab('live')}
+                  className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center space-x-2 ${
+                    activeTab === 'live'
+                      ? 'bg-white text-purple-900 shadow-lg'
+                      : 'text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Users className="w-5 h-5" />
+                  <span>1-on-1 Debate</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center space-x-2 ${
+                    activeTab === 'chat'
+                      ? 'bg-white text-purple-900 shadow-lg'
+                      : 'text-white hover:bg-white/10'
+                  }`}
+                >
+                  <MessageSquare className="w-5 h-5" />
+                  <span>Chat Debate</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('ai')}
+                  className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center space-x-2 ${
+                    activeTab === 'ai'
+                      ? 'bg-white text-purple-900 shadow-lg'
+                      : 'text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Brain className="w-5 h-5" />
+                  <span>Debate with AI</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'live' && renderLiveDebateTab()}
+          {activeTab === 'chat' && renderChatDebateTab()}
+          {activeTab === 'ai' && renderAIDebateTab()}
+>>>>>>> origin/main
         </div>
       </main>
 

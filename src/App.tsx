@@ -19,7 +19,10 @@ import FlashcardTrainer from './components/FlashcardTrainer';
 import SpellingPractice from './components/SpellingPractice';
 import SpellingPracticeTrainer from './components/SpellingPracticeTrainer';
 import DictationQuiz from './components/DictationQuiz';
+<<<<<<< HEAD
 import ImageSpell from './components/ImageSpell';
+=======
+>>>>>>> origin/main
 import PronunciationPractice from './components/PronunciationPractice';
 import JamSessions from './components/JamSessions';
 import Debates from './components/Debates';
@@ -31,9 +34,15 @@ import MediaRecorderTest from './components/MediaRecorderTest';
 import PeerTest from './components/PeerTest';
 import ChartsDemo from './components/ChartsDemo';
 import LiveDebatesStreamlit from './components/LiveDebatesStreamlit';
+<<<<<<< HEAD
 import DebateInterface from './components/DebateInterface';
 import DebateTestPage from './components/DebateTestPage';
 import EnvironmentWarning from './components/EnvironmentWarning';
+=======
+import TTSTest from './components/TTSTest';
+import RecordingTest from './components/RecordingTest';
+import DebateDemo from './components/DebateDemo';
+>>>>>>> origin/main
 
 export interface LibraryItem {
   name: string;
@@ -175,11 +184,18 @@ function App() {
     <FeedbackProvider>
       <VocabularyProvider>
         <RecordingProvider>
+<<<<<<< HEAD
                   <BrowserRouter>
           <EnvironmentWarning />
           <Routes>
               <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
               <Route path="/signup" element={<SignupPage onSignupSuccess={handleSignupSuccess} />} />
+=======
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage onBack={() => setShowLogin(false)} onSignupClick={() => { setShowLogin(false); setShowSignup(true); }} onLoginSuccess={handleLoginSuccess} />} />
+              <Route path="/signup" element={<SignupPage onBack={() => setShowSignup(false)} onLoginClick={() => { setShowSignup(false); setShowLogin(true); }} onSignupSuccess={handleSignupSuccess} />} />
+>>>>>>> origin/main
               <Route path="/dashboard" element={user ? <Dashboard onLogout={handleLogout} libraryItems={libraryItems} /> : <Navigate to="/login" />} />
               <Route path="/vocabpractice" element={user ? <VocabPractice libraryItems={libraryItems} setLibraryItems={setLibraryItems} /> : <Navigate to="/login" />} />
               <Route path="/jamsessions" element={user ? <JamSessions /> : <Navigate to="/login" />} />
@@ -191,7 +207,10 @@ function App() {
               <Route path="/sound-safari" element={<SoundSafari />} />
               <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
               <Route path="/dictation-quiz" element={<DictationQuiz />} />
+<<<<<<< HEAD
               <Route path="/image-spell" element={<ImageSpell />} />
+=======
+>>>>>>> origin/main
               <Route path="/debates" element={user ? <Debates /> : <Navigate to="/login" />} />
               <Route path="/live-debates" element={<LiveDebatesStreamlit />} />
               <Route path="/debate-tournament" element={user ? <DebateTournament /> : <Navigate to="/login" />} />
@@ -200,10 +219,18 @@ function App() {
               <Route path="/network-test" element={<NetworkTest />} />
               <Route path="/mediarecorder-test" element={<MediaRecorderTest />} />
               <Route path="/peer-test" element={<PeerTest />} />
+<<<<<<< HEAD
                              <Route path="/charts-demo" element={<ChartsDemo />} />
                <Route path="/debate-interface" element={<DebateInterface />} />
                <Route path="/debate-test" element={<DebateTestPage />} />
                <Route path="/*" element={<LandingPage />} />
+=======
+              <Route path="/charts-demo" element={<ChartsDemo />} />
+              <Route path="/tts-test" element={<TTSTest />} />
+              <Route path="/recording-test" element={<RecordingTest />} />
+              <Route path="/debate-demo" element={<DebateDemo />} />
+              <Route path="/*" element={<LandingPage />} />
+>>>>>>> origin/main
             </Routes>
           </BrowserRouter>
         </RecordingProvider>

@@ -98,8 +98,11 @@ const SpellingPracticeTrainer: React.FC = () => {
                 onClick={() => {
                   if (m.label === 'Dictation Quiz') {
                     navigate('/dictation-quiz');
+<<<<<<< HEAD
                   } else if (m.label === 'Image Spell') {
                     navigate('/image-spell');
+=======
+>>>>>>> origin/main
                   } else {
                     setMode(m.label);
                   }

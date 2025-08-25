@@ -11,6 +11,7 @@
     "proxy:eleven": "node server/elevanlabs-proxy.js",
     "proxy:openai": "node server/openai-proxy.js",
     "proxy:gcp": "node server/gcp-tts-proxy.js",
+<<<<<<< HEAD
     "mcp:server": "node mcp-server.js"
   },
   "dependencies": {
@@ -22,6 +23,23 @@
     "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "chrono-node": "^2.8.4",
+=======
+    "api:routes": "node server/api-routes.js",
+    "start:all": "concurrently \"npm run dev\" \"npm run api:routes\" \"npm run proxy:openai\" \"npm run proxy:eleven\""
+  },
+  "dependencies": {
+    "@babylonjs/loaders": "^8.23.1",
+    "@headlessui/react": "^2.2.4",
+    "@supabase/supabase-js": "^2.39.0",
+    "@types/peerjs": "^0.0.30",
+    "audio-recorder-polyfill": "^0.4.1",
+    "babylonjs": "^8.23.1",
+    "chart.js": "^4.5.0",
+    "chrono-node": "^2.8.4",
+    "concurrently": "^8.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+>>>>>>> origin/main
     "emoji-picker-react": "^4.9.7",
     "express": "^4.19.2",
     "form-data": "^4.0.4",
@@ -31,6 +49,11 @@
     "lucide-react": "^0.344.0",
     "multer": "^1.4.5-lts.2",
     "natural": "^6.7.1",
+<<<<<<< HEAD
+=======
+    "node-fetch": "^2.7.0",
+    "openai": "^4.28.0",
+>>>>>>> origin/main
     "peerjs": "^1.5.2",
     "puppeteer": "^24.16.2",
     "react": "^18.3.1",

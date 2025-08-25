@@ -122,14 +122,24 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
         {/* Dashboard Cards */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
           {/* Vocabulary Practice */}
+<<<<<<< HEAD
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-purple-400/50 transition-all duration-300 transform hover:-translate-y-2 flex flex-col">
+=======
+          <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-purple-400/50 transition-all duration-300 transform hover:-translate-y-2">
+>>>>>>> origin/main
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center mb-4">
               <BookOpen className="w-6 h-6 text-white" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">Vocabulary</h3>
+<<<<<<< HEAD
             <p className="text-gray-300 mb-4 flex-grow">Practice and expand your vocabulary</p>
             <button
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-2 rounded-lg font-semibold transition-all duration-300 mt-auto"
+=======
+            <p className="text-gray-300 mb-4">Practice and expand your vocabulary</p>
+            <button
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+>>>>>>> origin/main
               onClick={() => navigate('/vocabpractice')}
             >
               Start Practice
@@ -137,14 +147,24 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
           </div>
 
           {/* JAM Sessions */}
+<<<<<<< HEAD
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-blue-400/50 transition-all duration-300 transform hover:-translate-y-2 flex flex-col">
+=======
+          <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-blue-400/50 transition-all duration-300 transform hover:-translate-y-2">
+>>>>>>> origin/main
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center mb-4">
               <Mic className="w-6 h-6 text-white" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">JAM Sessions</h3>
+<<<<<<< HEAD
             <p className="text-gray-300 mb-4 flex-grow">Record and improve English Communication</p>
             <button 
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2 rounded-lg font-semibold transition-all duration-300 mt-auto"
+=======
+            <p className="text-gray-300 mb-4">Record and improve English Communication</p>
+            <button 
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+>>>>>>> origin/main
               onClick={() => navigate('/jamsessions')}
             >
               Practice Jam Sessions
@@ -152,14 +172,24 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
           </div>
 
           {/* Debates */}
+<<<<<<< HEAD
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-indigo-400/50 transition-all duration-300 transform hover:-translate-y-2 flex flex-col">
+=======
+          <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-indigo-400/50 transition-all duration-300 transform hover:-translate-y-2">
+>>>>>>> origin/main
             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center mb-4">
               <BarChart3 className="w-6 h-6 text-white" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">Debates</h3>
+<<<<<<< HEAD
             <p className="text-gray-300 mb-4 flex-grow">A way to become an efficient speaker</p>
             <button 
               className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-semibold transition-all duration-300 mt-auto"
+=======
+            <p className="text-gray-300 mb-4">A way to become an efficient speaker</p>
+            <button 
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+>>>>>>> origin/main
               onClick={() => navigate('/debates')}
             >
               Practice Debate
@@ -167,13 +197,22 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
           </div>
 
           {/* Achievements */}
+<<<<<<< HEAD
           <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-yellow-400/50 transition-all duration-300 transform hover:-translate-y-2 flex flex-col">
+=======
+          <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-yellow-400/50 transition-all duration-300 transform hover:-translate-y-2">
+>>>>>>> origin/main
             <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center mb-4">
               <Trophy className="w-6 h-6 text-white" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">Achievements</h3>
+<<<<<<< HEAD
             <p className="text-gray-300 mb-4 flex-grow">View your accomplishments</p>
             <button className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white py-2 rounded-lg font-semibold transition-all duration-300 mt-auto">
+=======
+            <p className="text-gray-300 mb-4">View your accomplishments</p>
+            <button className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white py-2 rounded-lg font-semibold transition-all duration-300">
+>>>>>>> origin/main
               View Badges
             </button>
           </div>

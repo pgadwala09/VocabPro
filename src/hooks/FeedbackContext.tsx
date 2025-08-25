@@ -44,5 +44,4 @@ export const FeedbackProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </FeedbackContext.Provider>
   );
-}; 
-
+};
