@@ -258,17 +258,7 @@ const TongueTwisterChallenge: React.FC<TongueTwisterChallengeProps> = ({ compact
               <StopCircle className="w-5 h-5" /> Stop
             </button>
           )}
-          {/* Playback Button */}
-          {recordedUrl && !isRecording && (
-            <button
-              className={compact ? "bg-green-500 hover:bg-green-600 rounded-full w-12 h-12 flex items-center justify-center shadow-lg mt-2" : "bg-green-500 hover:bg-green-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg mt-4"}
-              onClick={handlePlayRecording}
-              title="Play Your Recording"
-            >
-              <Play className={compact ? "w-6 h-6 text-white" : "w-8 h-8 text-white"} />
-              <audio ref={audioPlaybackRef} src={recordedUrl} />
-            </button>
-          )}
+
           {/* Feedback */}
           {showFeedback && (
             <div className={compact ? "mt-2 text-white text-center bg-white/10 rounded-xl p-2 w-full" : "mt-6 text-white text-center bg-white/10 rounded-xl p-4 w-full"}>

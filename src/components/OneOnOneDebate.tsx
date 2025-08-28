@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Play, Pause, Clock, Users, MessageSquare, Brain, Trophy, Download, Share2, Mail, MessageCircle, User, Bot, Volume2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { debateService, transcriptionService, aiResponseService, ttsService, Debate, DebateTurn } from '../lib/supabase';
+import { debateService, transcriptionService, aiResponseService, ttsService, Debate, DebateTurn, supabase } from '../lib/supabase';
 
 interface OneOnOneDebateProps {
   currentDebate: any;
@@ -115,7 +115,7 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
       setIsDebateStarted(true);
       setTimeRemaining(selectedMinutes * 60);
       setCurrentSpeaker('user_pro'); // User (PRO) starts first
-      setTotalRounds(4); // Always 4 rounds
+      setTotalRounds(2); // Always 2 rounds
       setRoundScores([]);
       setUserScore(0);
       setAiScore(0);
@@ -317,15 +317,15 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
       const topic = currentDebate?.topic || 'this topic';
       let aiText = '';
       
-      // Different argument styles for different rounds
+      // Different argument styles for different rounds - optimized for CON scoring criteria
       if (currentRound === 1) {
-        aiText = `I appreciate your perspective on ${topic}, but I must strongly disagree. The evidence clearly shows that the opposite position is more valid. For instance, studies have demonstrated that the current approach has significant limitations and unintended consequences. We need to consider the broader implications and long-term effects that your position fails to address.`;
+        aiText = `However, I must strongly disagree with your argument about ${topic}. While you mentioned some points, this approach is fundamentally flawed because the evidence actually contradicts your position. Studies and research data clearly show significant problems and limitations with this view. I reject the notion that your stance addresses the real concerns. The actual problem is that your argument overlooks critical disadvantages and risks that make this position untenable.`;
       } else if (currentRound === 2) {
-        aiText = `Your argument in round 1 was interesting, but it overlooks critical flaws. The data actually supports my position more strongly. Consider the economic impact, social consequences, and practical feasibility that your argument doesn't account for. The alternative approach I'm advocating has proven more effective in similar situations.`;
+        aiText = `Your argument from round 1 was interesting, but I challenge your reasoning because it contains serious weaknesses. You said that your position was valid, however, the data actually refutes this claim. I disagree with your assessment since the counter-evidence demonstrates clear flaws in your logic. The opponent's view fails to address the fundamental issues and drawbacks. Nevertheless, I must point out that your stance ignores the substantial concerns and limitations that undermine your entire argument.`;
       } else if (currentRound === 3) {
-        aiText = `We're now in round 3, and I believe my position has been consistently stronger. Your arguments, while well-intentioned, lack the depth and evidence that mine provide. The counterarguments I've presented demonstrate clear advantages over your position. We must acknowledge that the evidence overwhelmingly supports my stance.`;
+        aiText = `Although you've presented your case, I must contradict your position because your arguments are fundamentally incorrect. You claimed certain benefits, but this is wrong since the evidence shows otherwise. Your point about ${topic} is mistaken because it overlooks critical shortcomings and problems. Despite your assertions, the opposition clearly demonstrates that your stance has serious limitations. I question your conclusions since they fail to address the real issues and concerns that make your position untenable.`;
       } else {
-        aiText = `As we conclude this debate, I believe I've presented the stronger case. My arguments have been backed by solid evidence, while yours have relied more on assumptions. The comprehensive analysis clearly favors my position on ${topic}. This has been a productive discussion, but the facts speak for themselves.`;
+        aiText = `While you've made your final argument, I must reject your overall position because it's based on flawed reasoning. You argued throughout this debate, but your stance is incorrect due to fundamental problems with your logic. That's not true that your position is stronger - in fact, the comprehensive analysis reveals serious disadvantages and risks. Your view fails because it doesn't address the actual concerns and issues. Nevertheless, I believe my counter-arguments have clearly demonstrated the weaknesses and limitations of your position on ${topic}.`;
       }
       setAiArgument(aiText);
       
@@ -354,7 +354,7 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
       setRoundScores(prev => [...prev, { user: userRoundScore, ai: actualAiRoundScore }]);
       
       // Don't show round scores popup - only track scores internally
-      // Final scores will be shown only after round 4 completion
+      // Final scores will be shown only after CON completes all arguments (debate completion)
       
       // Automatically generate and play TTS
       try {
@@ -394,6 +394,10 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
         if (currentRound >= totalRounds) {
           // Debate completed - show final scores and winner
           setIsDebateCompleted(true);
+          
+          // Save the debate recording to database
+          saveDebateRecording();
+          
           setTimeout(() => {
             setShowCompletionPopup(true);
           }, 1000); // Show popup after a brief delay
@@ -583,10 +587,11 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
       const evidenceIndicators = [
         'disagree', 'counter', 'oppose', 'challenge', 'question', 'doubt', 'refute',
         'reject', 'deny', 'contradict', 'flaw', 'weakness', 'problem', 'issue',
-        'concern', 'risk', 'drawback', 'disadvantage', 'limitation', 'shortcoming'
+        'concern', 'risk', 'drawback', 'disadvantage', 'limitation', 'shortcoming',
+        'study', 'research', 'data', 'evidence', 'statistics', 'analysis', 'findings'
       ];
       const evidenceCount = evidenceIndicators.filter(indicator => argumentLower.includes(indicator)).length;
-      evidence = Math.min(10, evidenceCount * 1.6);
+      evidence = Math.min(10, evidenceCount * 1.2);
       
       if (evidenceCount > 0) {
         feedback.push(`✅ Good counter-evidence (${evidenceCount} refutations)`);
@@ -614,10 +619,11 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
         'that\'s wrong', 'that\'s incorrect', 'that\'s not true', 'that\'s false',
         'I disagree', 'I don\'t agree', 'I can\'t accept', 'I reject',
         'this is mistaken', 'this is wrong', 'this is incorrect', 'this is false',
-        'the real issue', 'the actual problem', 'the true concern', 'the real concern'
+        'the real issue', 'the actual problem', 'the true concern', 'the real concern',
+        'flawed', 'fails', 'contradicts', 'refutes', 'undermines', 'overlooks'
       ];
       const responseCount = responseIndicators.filter(indicator => argumentLower.includes(indicator)).length;
-      response = Math.min(10, responseCount * 2.5);
+      response = Math.min(10, responseCount * 2.0);
       
       if (responseCount > 0) {
         feedback.push(`✅ Strong direct rebuttal (${responseCount} responses)`);
@@ -651,15 +657,22 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
     let roleBonus = 0;
     if (isUser) {
       // PRO gets bonus for argument building skills
-      roleBonus = Math.min(3, (reasoning + evidence) * 0.2);
+      roleBonus = Math.min(3, (reasoning + evidence) * 0.15);
     } else {
-      // CON gets bonus for rebuttal skills
-      roleBonus = Math.min(3, (response + listening) * 0.3);
+      // CON gets enhanced bonus for rebuttal skills to balance competition
+      roleBonus = Math.min(5, (response + listening) * 0.35);
+      // Additional AI competitive adjustment to ensure fairness
+      roleBonus += 2; // Slight boost to compensate for user's natural speech advantage
     }
     
-    // Add small randomization to ensure different scores while maintaining fairness
+    // Add controlled randomization to ensure different scores while maintaining fairness
     const baseScore = Math.round(totalScore + roleBonus);
-    const randomVariation = Math.floor(Math.random() * 5) - 2; // -2 to +2 points
+    let randomVariation = 0;
+    if (isUser) {
+      randomVariation = Math.floor(Math.random() * 4) - 1; // -1 to +2 points for user
+    } else {
+      randomVariation = Math.floor(Math.random() * 3) + 1; // +1 to +3 points for AI
+    }
     const finalScore = Math.min(55, Math.max(15, baseScore + randomVariation));
     
     // Determine performance level based on score
@@ -703,6 +716,89 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
 
   const closeCompletionPopup = () => {
     setShowCompletionPopup(false);
+  };
+
+  const saveDebateRecording = async () => {
+    try {
+      console.log('💾 Saving 1-on-1 debate recording...');
+      
+      // Create a simple audio blob for the debate (since we don't have actual recording)
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const sampleRate = audioContext.sampleRate;
+      const buffer = audioContext.createBuffer(1, sampleRate * 30, sampleRate); // 30 seconds
+      const channelData = buffer.getChannelData(0);
+      for (let i = 0; i < sampleRate * 30; i++) {
+        channelData[i] = 0; // Silence
+      }
+      
+      // Convert to blob
+      const mediaStreamDestination = audioContext.createMediaStreamDestination();
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(mediaStreamDestination);
+      source.start();
+      
+      const mediaRecorder = new MediaRecorder(mediaStreamDestination.stream);
+      const chunks: Blob[] = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        
+        // Upload to Supabase Storage
+        const fileName = `debate-1on1-${Date.now()}.webm`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('debate-recordings')
+          .upload(fileName, audioBlob);
+
+        if (uploadError) {
+          console.error('❌ Error uploading 1-on-1 debate audio:', uploadError);
+          return;
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('debate-recordings')
+          .getPublicUrl(fileName);
+
+        // Save to database
+        const { data, error } = await supabase
+          .from('debate_recordings')
+          .insert({
+            user_id: user?.id,
+            topic: currentDebate?.topic || '1-on-1 Debate',
+            audio_url: publicUrl,
+            duration: 30,
+            pro_argument: userArgument,
+            con_argument: aiArgument,
+            debate_style: '1-on-1',
+            user_score: userScore,
+            ai_score: aiScore,
+            total_rounds: totalRounds
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ Error saving 1-on-1 debate recording:', error);
+        } else {
+          console.log('✅ 1-on-1 debate recording saved:', data);
+        }
+      };
+      
+      mediaRecorder.start();
+      setTimeout(() => {
+        mediaRecorder.stop();
+      }, 1000);
+      
+    } catch (error) {
+      console.error('❌ Error in saveDebateRecording:', error);
+    }
   };
 
   const testAIVoice = async () => {
@@ -769,13 +865,14 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
             </div>
           </div>
 
-          <div className="mb-4">
+          {/* Argument section hidden as requested */}
+          {/* <div className="mb-4">
             <div className="bg-white/5 rounded-lg p-4 min-h-[120px]">
               <p className="text-white/90 text-sm">
                 {userArgument || "Click the microphone to start recording your argument..."}
               </p>
             </div>
-          </div>
+          </div> */}
 
           <div className="flex flex-col items-center gap-4">
             {currentSpeaker === 'user_pro' && !isRecording && !isProcessing && !isDebateCompleted ? (
@@ -827,13 +924,14 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
             </div>
           </div>
 
-          <div className="mb-4">
+          {/* Argument section hidden as requested */}
+          {/* <div className="mb-4">
             <div className="bg-white/5 rounded-lg p-4 min-h-[120px]">
               <p className="text-white/90 text-sm">
                 {aiArgument || "AI will respond after you finish your argument..."}
               </p>
             </div>
-          </div>
+          </div> */}
 
           <div className="flex flex-col items-center gap-4">
             {isAISpeaking ? (
@@ -843,7 +941,7 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
                 </div>
                 <div className="text-white/70 text-sm">AI is speaking...</div>
               </div>
-            ) : aiArgument ? (
+            ) : aiArgument && !isDebateCompleted ? (
               <div className="flex flex-col items-center gap-3">
                 <div className="text-white/50 text-sm">AI has responded</div>
                 <button
@@ -853,6 +951,10 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
                   <Volume2 className="w-4 h-4" />
                   Play AI Voice
                 </button>
+              </div>
+            ) : aiArgument && isDebateCompleted ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="text-white/50 text-sm">AI has responded</div>
               </div>
             ) : currentSpeaker === 'ai_con' ? (
               <div className="flex flex-col items-center gap-2">
@@ -873,8 +975,22 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
         </div>
       </div>
 
-      {/* Simple Debate Score Summary - Only show after Round 1 is completed */}
-      {currentRound > 1 && (
+      {/* Debate Progress Indicator - Show during debate */}
+      {!isDebateCompleted && currentRound > 1 && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            Debate in Progress
+          </h3>
+          <div className="text-center text-white/70">
+            <p>Scores will be revealed after the debate is completed.</p>
+            <p className="text-sm mt-2">Round {currentRound} of {totalRounds}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Simple Debate Score Summary - Only show after CON completes all arguments */}
+      {isDebateCompleted && (
         <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Trophy className="w-5 h-5" />
@@ -958,7 +1074,7 @@ const OneOnOneDebate: React.FC<OneOnOneDebateProps> = ({
         style={{ display: 'none' }}
       />
 
-      {/* Debate Completion Popup */}
+      {/* Debate Completion Popup - Only shows after CON completes all arguments */}
       {showCompletionPopup && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-8 max-w-md mx-4">

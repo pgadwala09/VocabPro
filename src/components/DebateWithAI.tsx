@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy, Clock, Volume2 } from 'lucide-react';
+import { Brain, Sparkles, Users, MessageSquare, ArrowLeft, Mic, MicOff, Play, Pause, Trophy, Clock, Volume2, Download, Share2, Mail, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
@@ -17,20 +17,41 @@ interface DebateData {
   createdAt: Date;
 }
 
+interface DebateRecording {
+  id: string;
+  topic: string;
+  audio_url: string;
+  duration: number;
+  created_at: string;
+  pro_argument: string;
+  con_argument: string;
+  transcript?: string;
+}
+
 const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }) => {
   const navigate = useNavigate();
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speakingSide, setSpeakingSide] = useState<'pro' | 'con' | null>(null);
   const [mutePro, setMutePro] = useState(false);
-  const [muteCon, setMuteCon] = useState(false);
+  const [muteCon, setMuteCon] = useState(false); // false = voice enabled, true = voice muted
   const [testMode, setTestMode] = useState(false);
   const [aiStartsFirst, setAiStartsFirst] = useState(false); // PRO starts the debate by default
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [selectedRound, setSelectedRound] = useState<number>(1);
-  const [selectedMinutes, setSelectedMinutes] = useState<number>(5);
+  const [selectedMinutes, setSelectedMinutes] = useState<number>(0.167); // 10 seconds (10/60 = 0.167 minutes)
   const [voiceStatus, setVoiceStatus] = useState<'checking' | 'available' | 'fallback' | 'unavailable'>('checking');
   const [proArgument, setProArgument] = useState<string>('');
   const [conArgument, setConArgument] = useState<string>('');
+
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isDebateCompleted, setIsDebateCompleted] = useState(false);
+  const [recentRecordings, setRecentRecordings] = useState<DebateRecording[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordedBlobRef = useRef<Blob | null>(null);
 
   const { user } = useAuth();
   const avatarUrl = user?.user_metadata?.avatar_url;
@@ -38,6 +59,284 @@ const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }
   const initials = fullName
     ? fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+
+  // Load recent recordings on component mount
+  useEffect(() => {
+    loadRecentRecordings();
+  }, []);
+
+  const loadRecentRecordings = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('debate_recordings')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('Error loading recordings:', error);
+        return;
+      }
+
+      setRecentRecordings(data || []);
+    } catch (error) {
+      console.error('Error loading recordings:', error);
+    }
+  };
+
+  const startRecording = async () => {
+    console.log('🎤 Starting recording...');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      
+      console.log('✅ Microphone access granted');
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      console.log('✅ MediaRecorder created');
+      
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        console.log('📦 Data available:', event.data.size, 'bytes');
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          console.log('📦 Total chunks collected:', audioChunksRef.current.length);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        console.log('🛑 Recording stopped, processing audio...');
+        console.log('📦 Chunks to process:', audioChunksRef.current.length);
+        
+        if (audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const url = URL.createObjectURL(audioBlob);
+          console.log('🎵 Audio blob created, size:', audioBlob.size, 'bytes');
+          
+          // Set the recorded audio immediately and wait for it to be set
+          setRecordedAudio(audioBlob);
+          setAudioUrl(url);
+          
+          // Store the blob in a ref for immediate access
+          recordedBlobRef.current = audioBlob;
+          
+          console.log('✅ Audio blob stored for immediate access');
+        } else {
+          console.log('❌ No audio chunks collected!');
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+        console.log('🎤 Microphone stream stopped');
+      };
+      
+      // Start recording with smaller time slices to ensure data is collected
+      mediaRecorder.start(100); // Collect data every 100ms instead of 1000ms
+      setIsRecording(true);
+      console.log('🎤 Recording started successfully');
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+      alert('Microphone access denied or not available.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const saveRecording = async () => {
+    console.log('💾 Starting to save recording...');
+    console.log('🎵 Recorded audio exists:', !!recordedAudio);
+    console.log('👤 User exists:', !!user);
+    
+    // Check for recorded audio in both state and ref
+    let audioToSave = recordedAudio || recordedBlobRef.current;
+    
+    // Wait a bit for the recording to be processed
+    if (!audioToSave) {
+      console.log('⏳ Waiting for recording to be processed...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      audioToSave = recordedAudio || recordedBlobRef.current;
+    }
+    
+    if (!audioToSave) {
+      console.log('⚠️ No recorded audio found, creating fallback audio...');
+      // Create a minimal audio blob (1 second of silence)
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const sampleRate = audioContext.sampleRate;
+      const buffer = audioContext.createBuffer(1, sampleRate, sampleRate);
+      const channelData = buffer.getChannelData(0);
+      for (let i = 0; i < sampleRate; i++) {
+        channelData[i] = 0; // Silence
+      }
+      
+      // Convert to blob
+      const mediaStreamDestination = audioContext.createMediaStreamDestination();
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(mediaStreamDestination);
+      source.start();
+      
+      const mediaRecorder = new MediaRecorder(mediaStreamDestination.stream);
+      const chunks: Blob[] = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        audioToSave = new Blob(chunks, { type: 'audio/webm' });
+        console.log('🎵 Fallback audio created, size:', audioToSave.size, 'bytes');
+      };
+      
+      mediaRecorder.start();
+      setTimeout(() => {
+        mediaRecorder.stop();
+      }, 1000);
+      
+      // Wait a bit for the fallback audio to be created
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    } else {
+      console.log('✅ Using recorded audio, size:', audioToSave.size, 'bytes');
+    }
+    
+    if (!audioToSave || !user) {
+      console.log('❌ Missing required data for saving recording');
+      return;
+    }
+
+    try {
+      console.log('📤 Uploading audio to Supabase Storage...');
+      // Upload audio to Supabase Storage
+      const fileName = `debate-${Date.now()}.webm`;
+      console.log('📁 File name:', fileName);
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('debate-recordings')
+        .upload(fileName, audioToSave);
+
+      if (uploadError) {
+        console.error('❌ Error uploading audio:', uploadError);
+        return;
+      }
+
+      console.log('✅ Audio uploaded successfully:', uploadData);
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('debate-recordings')
+        .getPublicUrl(fileName);
+      
+      console.log('🔗 Public URL:', publicUrl);
+
+      console.log('💾 Saving recording metadata to database...');
+      console.log('📋 Recording data:', {
+        user_id: user.id,
+        topic: currentDebate.topic,
+        audio_url: publicUrl,
+        duration: Math.round(audioToSave.size / 16000),
+        pro_argument: proArgument,
+        con_argument: conArgument
+      });
+
+      // Save recording metadata to database
+      const { data, error } = await supabase
+        .from('debate_recordings')
+        .insert({
+          user_id: user.id,
+          topic: currentDebate.topic,
+          audio_url: publicUrl,
+          duration: Math.round(audioToSave.size / 16000), // Rough estimate
+          pro_argument: proArgument,
+          con_argument: conArgument,
+          debate_style: 'ai' // Set debate style for AI debates
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving recording to database:', error);
+        return;
+      }
+
+      console.log('✅ Recording saved to database:', data);
+
+      // Update recent recordings
+      setRecentRecordings(prev => [data, ...prev.slice(0, 9)]);
+      
+      // Clear current recording
+      setRecordedAudio(null);
+      setAudioUrl(null);
+      recordedBlobRef.current = null;
+      
+      console.log('🎉 Recording saved successfully');
+      
+      // Trigger a page refresh to update the dashboard
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      console.error('❌ Error saving recording:', error);
+    }
+  };
+
+  const downloadRecording = (recording: DebateRecording) => {
+    const link = document.createElement('a');
+    link.href = recording.audio_url;
+    link.download = `debate-${recording.topic}-${new Date(recording.created_at).toISOString().split('T')[0]}.webm`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const shareRecording = async (recording: DebateRecording) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Debate: ${recording.topic}`,
+          text: `Check out this AI debate about ${recording.topic}`,
+          url: recording.audio_url
+        });
+      } catch (error) {
+        console.error('Error sharing:', error);
+      }
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(recording.audio_url);
+      alert('Recording URL copied to clipboard!');
+    }
+  };
+
+  const shareToWhatsApp = (recording: DebateRecording) => {
+    const text = `Check out this AI debate about ${recording.topic}: ${recording.audio_url}`;
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
+  const shareViaEmail = (recording: DebateRecording) => {
+    const subject = `AI Debate: ${recording.topic}`;
+    const body = `Hi,\n\nI wanted to share this AI debate about ${recording.topic} with you.\n\nRecording: ${recording.audio_url}\n\nBest regards`;
+    const url = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(url);
+  };
 
   // Check voice system status on component mount
   useEffect(() => {
@@ -71,40 +370,126 @@ const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }
   const playAIVoice = async (text: string): Promise<void> => {
     console.log('🎤 Playing AI voice for:', text);
     
-    if (muteCon && !testMode) {
-      console.log('❌ AI voice is muted. Use the CON AI Voice button to enable it.');
-      alert('AI voice is muted. Click the "CON AI Voice" button to enable it.');
-      return;
+    // Check if voice is muted
+    if (muteCon) {
+      console.log('❌ AI voice is muted. Voice will be silent.');
+      // Don't show alert, just log and continue without voice
+      return Promise.resolve();
+    }
+    
+    // Check if speech synthesis is paused (browser policy)
+    if (window.speechSynthesis.speaking) {
+      console.log('🔄 Speech synthesis is already speaking, canceling previous...');
+      window.speechSynthesis.cancel();
     }
     
     return new Promise(async (resolve, reject) => {
       console.log('🔊 Using browser speech synthesis for immediate response');
+      
+      // Add a timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        console.log('⏰ Speech synthesis timeout, resolving...');
+        resolve();
+      }, 10000); // 10 second timeout
       try {
         if ('speechSynthesis' in window) {
+          // Wait for voices to be loaded
+          let voices = window.speechSynthesis.getVoices();
+          if (voices.length === 0) {
+            // Wait for voices to load
+            await new Promise<void>((voiceResolve) => {
+              const checkVoices = () => {
+                voices = window.speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                  voiceResolve();
+                } else {
+                  setTimeout(checkVoices, 100);
+                }
+              };
+              checkVoices();
+            });
+          }
+          
+          // Cancel any ongoing speech
           window.speechSynthesis.cancel();
+          
+          // Wait a bit for cancellation to complete
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
           const utterance = new SpeechSynthesisUtterance(text);
-          utterance.rate = 1.0;
+          utterance.rate = 0.9; // Slightly slower for better clarity
           utterance.pitch = 1.0;
           utterance.lang = 'en-US';
           utterance.volume = 1.0;
           
-          utterance.onstart = () => console.log('✅ Browser speech synthesis started');
-          utterance.onend = () => {
-            console.log('✅ Browser speech synthesis ended');
-            resolve();
+          // Try to get a better voice if available
+          const preferredVoice = voices.find(voice => 
+            voice.lang.includes('en') && (
+              voice.name.includes('Google') || 
+              voice.name.includes('Natural') || 
+              voice.name.includes('Microsoft') ||
+              voice.name.includes('Samantha') ||
+              voice.name.includes('Alex')
+            )
+          );
+          
+          if (preferredVoice) {
+            utterance.voice = preferredVoice;
+            console.log('🎤 Using preferred voice:', preferredVoice.name);
+          } else {
+            console.log('🎤 Using default voice');
+          }
+          
+          let hasStarted = false;
+          let hasEnded = false;
+          
+          utterance.onstart = () => {
+            hasStarted = true;
+            console.log('✅ Browser speech synthesis started');
+            console.log('🔊 Speaking:', text.substring(0, 100) + (text.length > 100 ? '...' : ''));
           };
-          utterance.onerror = (e) => {
-            console.error('❌ Browser speech synthesis error:', e);
+          
+          utterance.onend = () => {
+            hasEnded = true;
+            console.log('✅ Browser speech synthesis ended');
+            clearTimeout(timeout);
             resolve();
           };
           
-          window.speechSynthesis.speak(utterance);
+          utterance.onerror = (e) => {
+            console.error('❌ Browser speech synthesis error:', e);
+            console.error('Error details:', e.error, e.message);
+            
+            // If it was interrupted, try again once
+            if (e.error === 'interrupted' && !hasStarted) {
+              console.log('🔄 Retrying speech synthesis after interruption...');
+              setTimeout(() => {
+                window.speechSynthesis.speak(utterance);
+              }, 500);
+            } else {
+              clearTimeout(timeout);
+              resolve();
+            }
+          };
+          
+          // Add a longer delay to ensure speech synthesis is ready
+          setTimeout(() => {
+            try {
+              window.speechSynthesis.speak(utterance);
+            } catch (speakError) {
+              console.error('❌ Error calling speechSynthesis.speak:', speakError);
+              clearTimeout(timeout);
+              resolve();
+            }
+          }, 300);
         } else {
           console.error('❌ Browser speech synthesis not available');
+          clearTimeout(timeout);
           resolve();
         }
       } catch (error) {
         console.error('❌ Browser speech synthesis failed:', error);
+        clearTimeout(timeout);
         resolve();
       }
     });
@@ -153,24 +538,49 @@ const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }
     if (isSpeaking) return;
     setIsSpeaking(true);
     
+    console.log('🎬 Starting debate with automatic background recording...');
+    
+    // Start recording automatically in the background
+    let recordingStarted = false;
+    try {
+      await startRecording();
+      recordingStarted = true;
+      console.log('✅ Background recording started successfully');
+    } catch (error) {
+      console.error('❌ Failed to start background recording:', error);
+    }
+    
     let tickTimer: NodeJS.Timeout | null = null;
     
     try {
-      const minutes = selectedMinutes || (typeof currentDebate?.duration === 'number' && currentDebate.duration > 0 ? currentDebate.duration : 5);
+      const minutes = selectedMinutes || (typeof currentDebate?.duration === 'number' && currentDebate.duration > 0 ? currentDebate.duration : 0.167); // Default to 10 seconds
       const endTs = Date.now() + minutes * 60 * 1000;
       
       setRemainingSeconds(Math.ceil((endTs - Date.now()) / 1000));
-             tickTimer = setInterval(() => {
-         const s = Math.max(0, Math.ceil((endTs - Date.now()) / 1000));
-         setRemainingSeconds(s);
-         if (s <= 0) {
-           if (tickTimer) clearInterval(tickTimer);
-           // Immediately stop any ongoing speech synthesis when timer reaches 0
-           if ('speechSynthesis' in window) {
-             window.speechSynthesis.cancel();
-           }
-         }
-       }, 1000);
+      tickTimer = setInterval(() => {
+        const s = Math.max(0, Math.ceil((endTs - Date.now()) / 1000));
+        setRemainingSeconds(s);
+        if (s <= 0) {
+          if (tickTimer) clearInterval(tickTimer);
+          // Immediately stop any ongoing speech synthesis when timer reaches 0
+          if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+          
+          // Stop recording and save automatically
+          if (recordingStarted) {
+            console.log('🛑 Debate ended, stopping recording and saving...');
+            stopRecording();
+            setTimeout(() => {
+              saveRecording();
+              setIsDebateCompleted(true);
+              console.log('✅ Debate recording saved to database');
+            }, 1000);
+          } else {
+            setIsDebateCompleted(true);
+          }
+        }
+      }, 1000);
       
       let lastPro: string | null = null;
       let lastCon: string | null = null;
@@ -288,6 +698,7 @@ const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }
                         <option value={3}>Round 3</option>
                       </select>
                       <select value={selectedMinutes} onChange={(e)=>setSelectedMinutes(parseFloat(e.target.value))} className="bg-white text-purple-900 px-4 py-2 rounded-xl border border-white/20">
+                        <option value={0.167}>00:10</option>
                         <option value={0.5}>00:30</option>
                         <option value={1}>01:00</option>
                         <option value={2}>02:00</option>
@@ -423,6 +834,8 @@ const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }
                 </div>
               </div>
 
+
+
                              {/* Generate Debate Button */}
                <div className="mt-6">
                                                     <button onClick={async ()=>{
@@ -431,10 +844,29 @@ const DebateWithAI: React.FC<{ currentDebate: DebateData }> = ({ currentDebate }
                   }} disabled={isSpeaking || voiceStatus === 'unavailable'} className="w-full bg-gradient-to-r from-orange-200 via-orange-300 to-orange-400 hover:from-orange-300 hover:via-orange-400 hover:to-orange-500 text-orange-900 font-semibold py-3 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
                     {isSpeaking ? 'Generating...' : 'Generate Debate'}
                   </button>
+                  
+                  {/* Debug: Test recording save - Hidden as requested */}
+                  {/* <button 
+                    onClick={() => {
+                      console.log('🧪 Test recording save triggered');
+                      saveRecording();
+                    }}
+                    className="mt-2 w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg transition-colors"
+                  >
+                    Test Save Recording
+                  </button> */}
+                  
+
+                  
+
               </div>
+
+
             </div>
           </div>
         </div>
+
+
       </main>
 
       {/* Back Button */}

@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar, Line, Pie } from 'react-chartjs-2';
-// import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Mic, StopCircle, Brain, Sparkles, FileText, BarChart3, Plus } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
@@ -21,6 +21,7 @@ import { serpSearch } from '../lib/serp';
 import { wikiBestArticle } from '../lib/wikipedia';
 // import { generateElevenLabsSpeech, speakWithBrowser } from '../lib/tts';
 import { generateStructuredNotes, transcribeAudioWhisper } from '../lib/insights';
+import { generateGrokContent, generateGrokCreativeContent, isGrokAvailable, testGrokConnection } from '../lib/grok';
 
 // Custom CSS for enhanced talking animations
 const talkingStyles = `
@@ -63,6 +64,8 @@ const talkingStyles = `
 `;
 
 const JamSessions: React.FC = () => {
+  const navigate = useNavigate();
+  
   // Register Chart.js once
   useEffect(() => {
     try {
@@ -73,8 +76,11 @@ const JamSessions: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   // const [currentWord] = useState('JAM Session');
   const [audioURL, setAudioURL] = useState<string | null>(null);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [recordingWaveform, setRecordingWaveform] = useState<number[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -86,7 +92,7 @@ const JamSessions: React.FC = () => {
   const [summary, setSummary] = useState('');
   const [ageGroup, setAgeGroup] = useState('');
   const [proficiencyLevel, setProficiencyLevel] = useState('');
-  const [curriculum, setCurriculum] = useState('');
+
   const [recordedText, setRecordedText] = useState<string>(''); // used to compute insights
   const [speakingParas] = useState<string>('');
 
@@ -95,6 +101,7 @@ const JamSessions: React.FC = () => {
   const [selectedTimer, setSelectedTimer] = useState('2');
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [timerActive, setTimerActive] = useState(false);
+  const [showWarning, setShowWarning] = useState<boolean>(false);
   const [, setParticipants] = useState<number>(1);
   const [sharedNotes, setSharedNotes] = useState<string>('');
   const channelRef = useRef<any>(null);
@@ -104,13 +111,14 @@ const JamSessions: React.FC = () => {
   // Removed audio summary UI in Insights; keep placeholders unused
   // const [summaryAudioUrl, setSummaryAudioUrl] = useState<string | null>(null);
   // const [isSummarizing, setIsSummarizing] = useState(false);
-  const [recordings, setRecordings] = useState<Array<{ id: string; url: string; title: string; createdAt: Date; transcript?: string; blob?: Blob }>>([]);
+  const [recordings, setRecordings] = useState<Array<{ id: string; url: string; title: string; createdAt: Date; transcript?: string; blob?: Blob; durationSec?: number }>>([]);
   const [recordingInsights, setRecordingInsights] = useState<Record<string, { words: number; durationSec: number; wpm: number; avgPitchHz: number; pitchLevel: 'Low'|'Medium'|'High'|'Unknown'; style: 'Informative'|'Persuasive'|'Narrative'|'Descriptive'|'Unknown'; pronunciation: 'Clear'|'Average'|'Needs practice'|'Unknown' }>>({});
   const [contentNotes, setContentNotes] = useState<string>('');
   const [isBionicMode, setIsBionicMode] = useState<boolean>(true);
   const [contentHistory, setContentHistory] = useState<Array<{ id: string; title: string; content: string; notes?: string; createdAt: Date }>>([]);
   
   const [isWebSearching, setIsWebSearching] = useState<boolean>(false);
+
   const [insightsModalOpen, setInsightsModalOpen] = useState<boolean>(false);
   const [insightsModalRecId, setInsightsModalRecId] = useState<string | null>(null);
 
@@ -132,7 +140,7 @@ const JamSessions: React.FC = () => {
       if (parsed.summary) setSummary(parsed.summary);
       if (parsed.ageGroup) setAgeGroup(parsed.ageGroup);
       if (parsed.proficiencyLevel) setProficiencyLevel(parsed.proficiencyLevel);
-      if (parsed.curriculum) setCurriculum(parsed.curriculum);
+
     } catch {}
   }, []);
 
@@ -142,18 +150,19 @@ const JamSessions: React.FC = () => {
         summary,
         ageGroup,
         proficiencyLevel,
-        curriculum,
         savedAt: Date.now()
       };
       localStorage.setItem(FILTERS_KEY, JSON.stringify(data));
     } catch {}
-  }, [summary, ageGroup, proficiencyLevel, curriculum]);
+  }, [summary, ageGroup, proficiencyLevel]);
 
   const handleClearFilters = () => {
     setSummary('');
+    setContentNotes('');
+    setSharedNotes('');
     setAgeGroup('');
     setProficiencyLevel('');
-    setCurriculum('');
+
     try { localStorage.removeItem(FILTERS_KEY); } catch {}
   };
 
@@ -165,10 +174,18 @@ const JamSessions: React.FC = () => {
   };
 
   const handleSaveNotes = () => {
-    const title = createdContent?.title || (summary ? `Notes: ${summary}` : 'My Notes');
+    const baseTitle = createdContent?.title || (summary ? summary : 'My Notes');
+    const title = `Noted | ${baseTitle}`;
     const content = createdContent?.content || '';
     addToContentHistory(title, content, contentNotes);
-    alert('Saved to Recent Activity');
+    
+    // Show success popup
+    setShowSaveSuccess(true);
+    
+    // Auto-hide the popup after 3 seconds
+    setTimeout(() => {
+      setShowSaveSuccess(false);
+    }, 3000);
   };
 
   // When AI content becomes available, enable Bionic Reading by default
@@ -205,11 +222,11 @@ const JamSessions: React.FC = () => {
   // Build structured content based on filters with sections: Introduction, Beginner, Middle, Conclusion
   const buildStructuredContent = (
     topic: string,
-    options: { ageGroup?: string; proficiencyLevel?: string; curriculum?: string; baseContent?: string }
+    options: { ageGroup?: string; proficiencyLevel?: string; baseContent?: string }
   ): string => {
     const { baseContent } = options || {};
 
-    const intro = `What is ${topic}? In this section, you’ll get a quick, clear picture of the idea, why it matters, and where you might see it in real life. Think of this as your friendly on‑ramp before we dive deeper.`;
+    const intro = `What is ${topic}? In this section, you'll get a quick, clear picture of the idea, why it matters, and where you might see it in real life. Think of this as your friendly on‑ramp before we dive deeper.`;
 
     const beginner = `
 • What it is: ${topic} explained with simple words and an everyday example.
@@ -222,7 +239,7 @@ const JamSessions: React.FC = () => {
       .trim();
     const middle = cleaned && cleaned.length > 0
       ? cleaned
-      : `Let’s explore ${topic} step by step with key points, a short story or use‑case, and one quick practice question.`;
+      : `Let's explore ${topic} step by step with key points, a short story or use‑case, and one quick practice question.`;
 
     const conclusion = `
 • Key takeaways: 2–3 points you should remember about ${topic}.
@@ -338,6 +355,8 @@ const JamSessions: React.FC = () => {
 
   // Timer options
   const timerOptions = [
+    { value: '0.167', label: '10 seconds' },
+    { value: '0.5', label: '30 seconds' },
     { value: '1', label: '1 minute' },
     { value: '2', label: '2 minutes' },
     { value: '3', label: '3 minutes' },
@@ -388,7 +407,10 @@ const JamSessions: React.FC = () => {
 
     // Receive shared notes updates
     channel.on('broadcast', { event: 'notes_update' }, ({ payload }) => {
-      if (typeof payload?.text === 'string') setSharedNotes(payload.text);
+      if (typeof payload?.text === 'string') {
+        setSharedNotes(payload.text);
+        setContentNotes(payload.text);
+      }
     });
 
     // Late joiners request current state
@@ -457,12 +479,18 @@ const JamSessions: React.FC = () => {
   const startCountdown = (seconds: number) => {
     setTimeRemaining(seconds);
     setTimerActive(true);
+    setShowWarning(false);
     const intervalId = window.setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(intervalId);
           setTimerActive(false);
+          setShowWarning(false);
           return 0;
+        }
+        // Show warning when 5 seconds or less remain
+        if (prev <= 5) {
+          setShowWarning(true);
         }
         return prev - 1;
       });
@@ -571,19 +599,36 @@ const JamSessions: React.FC = () => {
     return 'Needs practice';
   };
 
-  const computeInsightsForRecording = async (rec: { id: string; url: string; transcript?: string; blob?: Blob }) => {
-    const { avgHz, durationSec } = await estimateAveragePitchHz(rec.blob || rec.url);
+  const computeInsightsForRecording = async (rec: { id: string; url: string; transcript?: string; blob?: Blob; durationSec?: number }) => {
+    const { avgHz } = await estimateAveragePitchHz(rec.blob || rec.url);
     const words = (rec.transcript || '').trim().split(/\s+/).filter(Boolean).length;
-    let minutes = durationSec > 0 ? durationSec / 60 : 0;
-    if (!minutes || !isFinite(minutes)) minutes = 1 / 60; // prevent zero; assume 1s minimal
+    
+    // Use actual recording duration if available, otherwise fallback to estimated duration
+    let actualDurationSec = rec.durationSec || 0;
+    if (!actualDurationSec || !isFinite(actualDurationSec) || actualDurationSec < 0.1) {
+      // Fallback to estimated duration if actual duration is not available
+      const { durationSec: estimatedDuration } = await estimateAveragePitchHz(rec.blob || rec.url);
+      actualDurationSec = estimatedDuration || 0;
+    }
+    
+    // Improved WPM calculation with actual duration
+    let minutes = actualDurationSec > 0 ? actualDurationSec / 60 : 0;
+    if (!minutes || !isFinite(minutes) || minutes < 0.01) {
+      // If duration is still too short or invalid, estimate from transcript length
+      minutes = Math.max(0.1, words / 150); // Assume average 150 WPM if duration is unreliable
+    }
+    
     const wpm = Math.round(words / minutes);
     const style = classifyCommunicationStyle(rec.transcript);
     const pronunciation = estimatePronunciation(rec.transcript);
+    
+    console.log(`Recording ${rec.id}: ${words} words, ${actualDurationSec.toFixed(2)}s actual duration, ${minutes.toFixed(2)} minutes, ${wpm} WPM`);
+    
     setRecordingInsights(prev => ({
       ...prev,
       [rec.id]: {
         words,
-        durationSec: Math.round(durationSec),
+        durationSec: Math.round(actualDurationSec),
         wpm,
         avgPitchHz: Math.round(avgHz),
         pitchLevel: classifyPitchLevel(avgHz),
@@ -608,22 +653,41 @@ const JamSessions: React.FC = () => {
   const buildAggregateFeedback = () => {
     const vals = recordings.map(r => recordingInsights[r.id]).filter(Boolean) as any[];
     if (!vals.length) return 'No recordings yet. Record a clip to see your feedback report.';
+    
     const avgWpm = Math.round(vals.reduce((a, v) => a + (v.wpm || 0), 0) / vals.length);
+    const minWpm = Math.min(...vals.map(v => v.wpm || 0));
+    const maxWpm = Math.max(...vals.map(v => v.wpm || 0));
     const avgPitch = Math.round(vals.reduce((a, v) => a + (v.avgPitchHz || 0), 0) / vals.length);
+    
     const styleCounts: Record<string, number> = {};
     vals.forEach(v => { styleCounts[v.style] = (styleCounts[v.style] || 0) + 1; });
     const topStyle = Object.entries(styleCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || 'Unknown';
+    
     const pronCounts: Record<string, number> = {};
     vals.forEach(v => { pronCounts[v.pronunciation] = (pronCounts[v.pronunciation] || 0) + 1; });
     const mostPron = Object.entries(pronCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || 'Unknown';
+    
     const tips: string[] = [];
+    
+    // Enhanced WPM feedback
     if (avgWpm > 170) tips.push('Reduce pace slightly (target 120–160 wpm).');
-    if (avgWpm < 110) tips.push('Increase pace for energy (target 120–160 wpm).');
+    else if (avgWpm < 110) tips.push('Increase pace for energy (target 120–160 wpm).');
+    else tips.push('Great speaking pace!');
+    
+    // WPM range feedback
+    const wpmRange = maxWpm - minWpm;
+    if (wpmRange > 50) tips.push('Try to maintain consistent pace across recordings.');
+    
     if (avgPitch < 140) tips.push('Lift pitch occasionally to sound more engaging.');
-    if (avgPitch > 220) tips.push('Lower pitch slightly to convey confidence.');
+    else if (avgPitch > 220) tips.push('Lower pitch slightly to convey confidence.');
+    else tips.push('Good pitch variation!');
+    
     if (mostPron === 'Needs practice') tips.push('Practice articulation with tongue twisters and slow repetition.');
+    else if (mostPron === 'Clear') tips.push('Excellent pronunciation!');
+    
     if (tips.length === 0) tips.push('Great overall balance. Keep practicing consistently!');
-    return `Average WPM: ${avgWpm}. Average Pitch: ${avgPitch} Hz. Predominant style: ${topStyle}. Pronunciation trend: ${mostPron}. ${tips.join(' ')}`;
+    
+    return `Average WPM: ${avgWpm} (range: ${minWpm}-${maxWpm}). Average Pitch: ${avgPitch} Hz. Predominant style: ${topStyle}. Pronunciation trend: ${mostPron}. ${tips.join(' ')}`;
   };
 
   const handleStartRecording = async () => {
@@ -631,28 +695,38 @@ const JamSessions: React.FC = () => {
     setRecordedText('');
     audioChunks.current = [];
     setRecordingWaveform([]);
+    setRecordingStartTime(Date.now());
     
     // Start timer
-    const selectedTimeInMinutes = parseInt(selectedTimer);
-    const selectedTimeInSeconds = selectedTimeInMinutes * 60;
+    const selectedTimeInMinutes = parseFloat(selectedTimer);
+    const selectedTimeInSeconds = Math.round(selectedTimeInMinutes * 60);
     setTimeRemaining(selectedTimeInSeconds);
     setTimerActive(true);
+    setShowWarning(false);
     
     // Broadcast timer start to the room and start local countdown
     const startedAt = Date.now();
     lastTimerRef.current = { durationSeconds: selectedTimeInSeconds, startedAt };
     channelRef.current?.send({ type: 'broadcast', event: 'timer_start', payload: { durationSeconds: selectedTimeInSeconds, startedAt } });
     // Timer countdown
-    const timerInterval = setInterval(() => {
+    timerIntervalRef.current = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
-          clearInterval(timerInterval);
+          if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+          }
           setTimerActive(false);
+          setShowWarning(false);
           // Auto-stop recording when timer reaches zero
           if (mediaRecorderRef.current && isRecording) {
             handleStopRecording();
           }
           return 0;
+        }
+        // Show warning when 5 seconds or less remain
+        if (prev <= 5) {
+          setShowWarning(true);
         }
         return prev - 1;
       });
@@ -674,10 +748,14 @@ const JamSessions: React.FC = () => {
         stream.getTracks().forEach(track => track.stop());
         stopWaveformAnalysis();
         setTimerActive(false);
-        clearInterval(timerInterval);
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+        }
         // save into recent recordings list
         const id = Date.now().toString();
-        const rec = { id, url, title: topicTitle || 'JAM Session', createdAt: new Date(), transcript: '', blob };
+        const actualDurationSec = recordingStartTime ? (Date.now() - recordingStartTime) / 1000 : 0;
+        const rec = { id, url, title: topicTitle || 'JAM Session', createdAt: new Date(), transcript: '', blob, durationSec: actualDurationSec };
         setRecordings(prev => [ rec, ...prev ]);
         
         // Transcribe using Whisper (via OpenAI API or configured proxy)
@@ -687,13 +765,13 @@ const JamSessions: React.FC = () => {
             const transcript = text || '';
             setRecordedText(transcript);
             setRecordings(prev => prev.map(r => r.id === id ? { ...r, transcript } : r));
-            computeInsightsForRecording({ id, url, transcript, blob });
+            computeInsightsForRecording({ id, url, transcript, blob, durationSec: actualDurationSec });
           } catch {
             // Fallback to minimal placeholder if transcription fails
             const transcript = 'Recording captured. Enable VITE_OPENAI_API_KEY to transcribe with Whisper.';
             setRecordedText(transcript);
             setRecordings(prev => prev.map(r => r.id === id ? { ...r, transcript } : r));
-            computeInsightsForRecording({ id, url, transcript, blob });
+            computeInsightsForRecording({ id, url, transcript, blob, durationSec: actualDurationSec });
           }
         }, 300);
       };
@@ -703,7 +781,10 @@ const JamSessions: React.FC = () => {
     } catch (err) {
       alert('Microphone access denied or not available.');
       setTimerActive(false);
-      clearInterval(timerInterval);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
     }
   };
 
@@ -713,6 +794,16 @@ const JamSessions: React.FC = () => {
       setIsRecording(false);
       stopWaveformAnalysis();
     }
+    
+    // Clear timer interval if it's still running
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    
+    setTimerActive(false);
+    setShowWarning(false);
+    
     // Broadcast timer stop to the room
     channelRef.current?.send({ type: 'broadcast', event: 'timer_stop', payload: {} });
   };
@@ -759,44 +850,157 @@ const JamSessions: React.FC = () => {
     setIsRecording(false);
     setRecordingWaveform([]);
     setRecordedText('');
+    setRecordingStartTime(null);
+    setTimerActive(false);
+    setShowWarning(false);
+    
+    // Clear timer interval if it's still running
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    
     stopWaveformAnalysis();
   };
 
-  // Removed Create Content flow as per request; we now focus only on Search the Web
 
-  
 
   const handleSearchWeb = async () => {
+    console.log('🎯 handleSearchWeb function called!');
     const query = (topicTitle || summary || '').trim();
     if (!query) {
+      console.log('❌ No query provided for search');
       return;
     }
+    console.log('🔍 Starting search with query:', query);
+    console.log('🔍 Age Group:', ageGroup);
+    console.log('🔍 Proficiency Level:', proficiencyLevel);
     // Keep UI title in sync with the search query
     setTopicTitle(query);
+    
+    // First try OpenAI for content generation (primary method)
+    console.log('🤖 Attempting OpenAI web search for:', query);
+    console.log('🔑 OpenAI API Key:', import.meta.env.VITE_OPENAI_API_KEY ? 'Present' : 'Missing');
+    console.log('🔑 OpenAI Proxy:', import.meta.env.VITE_OPENAI_PROXY ? 'Present' : 'Missing');
+    setIsWebSearching(true);
+    try {
+      const openAIContent = await generateStructuredNotes(query, query, ageGroup, proficiencyLevel);
+      console.log('📝 OpenAI response:', openAIContent);
+      if (openAIContent) {
+        console.log('✅ OpenAI content generated successfully');
+        setCreatedContent({
+          content: openAIContent,
+          title: query,
+          createdAt: new Date().toLocaleString(),
+          status: 'OpenAI Web Search',
+          isLoading: false
+        });
+        setTopicTitle(query);
+        // Only update summary, don't overwrite content notes
+        setSummary(query);
+        setContentHistory(prev => [{ 
+          id: `${Date.now()}-openai-web`, 
+          title: query, 
+          content: openAIContent, 
+          createdAt: new Date() 
+        }, ...prev]);
+        setIsWebSearching(false);
+        return;
+      } else {
+        console.warn('❌ OpenAI returned null or empty content');
+      }
+    } catch (error) {
+      console.error('❌ OpenAI web search failed:', error);
+    }
+    setIsWebSearching(false);
+    
+    // Second try Grok for content generation (secondary method)
+    if (isGrokAvailable()) {
+      console.log('🔍 Attempting Grok web search for:', query);
+      setIsWebSearching(true);
+      try {
+        const grokContent = await generateGrokContent(query, ageGroup, proficiencyLevel);
+        console.log('📝 Grok response:', grokContent);
+        if (grokContent && grokContent.content) {
+          console.log('✅ Grok content generated successfully');
+          setCreatedContent({
+            content: grokContent.content,
+            title: grokContent.title || query,
+            createdAt: new Date().toLocaleString(),
+            status: 'Grok Web Search',
+            isLoading: false
+          });
+          setTopicTitle(grokContent.title || query);
+          // Only update summary, don't overwrite content notes
+          setSummary(query);
+          setContentHistory(prev => [{ 
+            id: `${Date.now()}-grok-web`, 
+            title: grokContent.title || query, 
+            content: grokContent.content, 
+            createdAt: new Date() 
+          }, ...prev]);
+          setIsWebSearching(false);
+          return;
+        } else {
+          console.warn('❌ Grok returned null or empty content');
+        }
+      } catch (error) {
+        console.error('❌ Grok web search failed:', error);
+      }
+      setIsWebSearching(false);
+    }
+    
     const hasFirecrawl = Boolean((import.meta as any).env.VITE_FIRECRAWL_API_KEY);
     const hasSerp = Boolean((import.meta as any).env.VITE_SERPAPI_KEY);
     if (!hasFirecrawl && !hasSerp) {
-      // No web search providers configured; gracefully fall back to Wikipedia
-      try {
-        const article = await wikiBestArticle(query);
-        if (article) {
-          const markdown = `# ${article.title}\n\n${article.extract}\n\nSource: ${article.url}`;
-          const structuredWiki = buildStructuredContent(article.title, { ageGroup, proficiencyLevel, curriculum, baseContent: markdown });
-        setCreatedContent({
-            content: structuredWiki,
-            title: article.title,
-          createdAt: new Date().toLocaleString(),
-            status: 'Wikipedia',
-          isLoading: false
-        });
-          setTopicTitle(article.title);
-          setContentHistory(prev => [{ id: `${Date.now()}-wiki-nokeys`, title: article.title, content: structuredWiki, createdAt: new Date() }, ...prev]);
-      } else {
-          // No keys and no Wikipedia result; do nothing visible
+      // No web search providers configured; try Grok Creative as fallback
+      if (isGrokAvailable()) {
+        console.log('🎨 Attempting Grok Creative fallback for:', query);
+        setIsWebSearching(true);
+        try {
+          const grokCreativeContent = await generateGrokCreativeContent(query, ageGroup, proficiencyLevel);
+          console.log('📝 Grok Creative response:', grokCreativeContent);
+          if (grokCreativeContent && grokCreativeContent.content) {
+            console.log('✅ Grok Creative content generated successfully');
+            setCreatedContent({
+              content: grokCreativeContent.content,
+              title: grokCreativeContent.title || `Creative: ${query}`,
+              createdAt: new Date().toLocaleString(),
+              status: 'Grok Creative Web',
+              isLoading: false
+            });
+            setTopicTitle(grokCreativeContent.title || `Creative: ${query}`);
+            // Only update summary, don't overwrite content notes
+            setSummary(query);
+            setContentHistory(prev => [{ 
+              id: `${Date.now()}-grok-creative-web`, 
+              title: grokCreativeContent.title || `Creative: ${query}`, 
+              content: grokCreativeContent.content, 
+              createdAt: new Date() 
+            }, ...prev]);
+            setIsWebSearching(false);
+            return;
+          } else {
+            console.warn('❌ Grok Creative returned null or empty content');
+          }
+        } catch (error) {
+          console.error('❌ Grok creative web search failed:', error);
         }
-      } catch {
-        // Silent failure in no-key path
+        setIsWebSearching(false);
       }
+      
+      // If both OpenAI and Grok fail, show error message
+      console.log('❌ Both OpenAI and Grok failed for:', query);
+      setCreatedContent({
+        content: 'Sorry, content generation failed. Please try again or check your API configuration.',
+        title: query,
+        createdAt: new Date().toLocaleString(),
+        status: 'Error',
+        isLoading: false
+      });
+      setTopicTitle(query);
+      setSummary(query);
+      setIsWebSearching(false);
       return;
     }
     setIsWebSearching(true);
@@ -843,26 +1047,43 @@ const JamSessions: React.FC = () => {
 
       if (scraped.length > 0) {
         // Show first scraped page in Content Notes
-        let structuredFirst = buildStructuredContent(scraped[0].title, { ageGroup, proficiencyLevel, curriculum, baseContent: scraped[0].markdown });
-        // Enhance with creative rewrite if OpenAI key available
-        try {
-          const ai = await generateStructuredNotes(scraped[0].title, scraped[0].markdown, ageGroup, proficiencyLevel, curriculum);
-          if (ai) structuredFirst = ai;
-        } catch {}
+        let structuredFirst = buildStructuredContent(scraped[0].title, { ageGroup, proficiencyLevel, baseContent: scraped[0].markdown });
+        
+        // Enhance with Grok if available (primary choice)
+        if (isGrokAvailable()) {
+          try {
+            const grokContent = await generateGrokContent(scraped[0].title, ageGroup, proficiencyLevel, scraped[0].markdown);
+            if (grokContent) {
+              structuredFirst = grokContent.content;
+            }
+          } catch (error) {
+            console.warn('Grok enhancement failed, trying OpenAI:', error);
+          }
+        }
+        
+        // Fallback to OpenAI if Grok is not available
+        if (!isGrokAvailable()) {
+          try {
+            const ai = await generateStructuredNotes(scraped[0].title, scraped[0].markdown, ageGroup, proficiencyLevel);
+            if (ai) structuredFirst = ai;
+          } catch {}
+        }
         setCreatedContent({
           content: structuredFirst,
           title: scraped[0].title,
           createdAt: new Date().toLocaleString(),
-          status: 'Web',
+          status: isGrokAvailable() ? 'Web + Grok Enhanced' : 'Web',
           isLoading: false
         });
         setTopicTitle(scraped[0].title);
+        // Only update summary, don't overwrite content notes
+        setSummary(scraped[0].title);
         // Add all scraped pages to Recent Activity
         const enriched = [] as Array<{ id: string; title: string; content: string; createdAt: Date }>;
         for (const s of scraped) {
-          let c = buildStructuredContent(s.title, { ageGroup, proficiencyLevel, curriculum, baseContent: s.markdown });
-          try {
-            const ai = await generateStructuredNotes(s.title, s.markdown, ageGroup, proficiencyLevel, curriculum);
+                     let c = buildStructuredContent(s.title, { ageGroup, proficiencyLevel, baseContent: s.markdown });
+           try {
+             const ai = await generateStructuredNotes(s.title, s.markdown, ageGroup, proficiencyLevel);
             if (ai) c = ai;
           } catch {}
           enriched.push({ id: `${Date.now()}-${Math.random()}`, title: s.title, content: c, createdAt: new Date() });
@@ -872,19 +1093,37 @@ const JamSessions: React.FC = () => {
         // If we couldn't scrape, still add the links to Recent Activity as plain text
         if (serpLinks.length > 0) {
           const asText = serpLinks.map(l => `- ${l.title || l.link}: ${l.link}`).join('\n');
-          let structuredLinks = buildStructuredContent(query, { ageGroup, proficiencyLevel, curriculum, baseContent: `Web links for ${query}:\n\n${asText}` });
-          try {
-            const ai = await generateStructuredNotes(query, asText, ageGroup, proficiencyLevel, curriculum);
-            if (ai) structuredLinks = ai;
-          } catch {}
+          let structuredLinks = buildStructuredContent(query, { ageGroup, proficiencyLevel, baseContent: `Web links for ${query}:\n\n${asText}` });
+          
+          // Enhance with Grok if available (primary choice)
+          if (isGrokAvailable()) {
+            try {
+              const grokContent = await generateGrokContent(query, ageGroup, proficiencyLevel, asText);
+              if (grokContent) {
+                structuredLinks = grokContent.content;
+              }
+            } catch (error) {
+              console.warn('Grok enhancement failed, trying OpenAI:', error);
+            }
+          }
+          
+          // Fallback to OpenAI if Grok is not available
+          if (!isGrokAvailable()) {
+            try {
+              const ai = await generateStructuredNotes(query, asText, ageGroup, proficiencyLevel);
+              if (ai) structuredLinks = ai;
+            } catch {}
+          }
           setCreatedContent({
             content: structuredLinks,
             title: `Web results for "${query}"` ,
             createdAt: new Date().toLocaleString(),
-            status: 'Web Links',
+            status: isGrokAvailable() ? 'Web Links + Grok Enhanced' : 'Web Links',
             isLoading: false
           });
           setTopicTitle(`Web results for "${query}"`);
+          // Only update summary, don't overwrite content notes
+          setSummary(query);
           setContentHistory(prev => [{ id: `${Date.now()}-links`, title: `Web results for "${query}"`, content: structuredLinks, createdAt: new Date() }, ...prev]);
         } else {
           // Final fallback: Wikipedia summary (no API key needed)
@@ -892,7 +1131,7 @@ const JamSessions: React.FC = () => {
             const article = await wikiBestArticle(query);
             if (article) {
               const markdown = `# ${article.title}\n\n${article.extract}\n\nSource: ${article.url}`;
-              const structuredWiki = buildStructuredContent(article.title, { ageGroup, proficiencyLevel, curriculum, baseContent: markdown });
+              const structuredWiki = buildStructuredContent(article.title, { ageGroup, proficiencyLevel, baseContent: markdown });
               setCreatedContent({
                 content: structuredWiki,
                 title: article.title,
@@ -901,6 +1140,8 @@ const JamSessions: React.FC = () => {
                 isLoading: false
               });
               setTopicTitle(article.title);
+              // Only update summary, don't overwrite content notes
+              setSummary(article.title);
               setContentHistory(prev => [{ id: `${Date.now()}-wiki-fallback`, title: article.title, content: structuredWiki, createdAt: new Date() }, ...prev]);
             }
           } catch {}
@@ -912,6 +1153,9 @@ const JamSessions: React.FC = () => {
       setIsWebSearching(false);
     }
   };
+
+  // AI Content Generation Functions
+
 
   // Removed Add from Wikipedia/Britannica flows as per request
 
@@ -940,7 +1184,20 @@ const JamSessions: React.FC = () => {
             {isBionicMode && createdContent && typeof createdContent.content === 'string' && createdContent.content.length > 0 ? (
               <div className="space-y-4">
                 <div className="bg-gradient-to-br from-purple-900/50 to-blue-900/50 rounded-lg p-4 border border-purple-500/30">
-                  <h4 className="font-semibold text-white mb-3">{createdContent.title || 'Generated Content'}</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-white">{createdContent.title || 'Generated Content'}</h4>
+                    {createdContent.status && (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        createdContent.status.includes('OpenAI') ? 'bg-blue-600 text-white' :
+                        createdContent.status.includes('Grok') ? 'bg-orange-600 text-white' :
+                        createdContent.status.includes('Web') ? 'bg-purple-600 text-white' :
+                        createdContent.status.includes('Wikipedia') ? 'bg-green-600 text-white' :
+                        'bg-gray-600 text-white'
+                      }`}>
+                        {createdContent.status}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
                     {renderBionicText(createdContent.content)}
                   </div>
@@ -964,7 +1221,15 @@ const JamSessions: React.FC = () => {
                 <p className="text-gray-300 text-sm mb-3">Jot down your own notes about the selected content.</p>
                 <textarea
                   value={contentNotes}
-                  onChange={(e) => setContentNotes(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setContentNotes(val);
+                    setSharedNotes(val);
+                    // Only sync with summary if summary is empty and user is typing
+                    if (!summary || summary.trim() === '') {
+                      setSummary(val);
+                    }
+                  }}
                   placeholder="Write your notes here..."
                   className="w-full h-64 bg-black/30 border border-white/20 rounded p-3 text-white placeholder-gray-400"
                 />
@@ -990,7 +1255,16 @@ const JamSessions: React.FC = () => {
                 <input
                   type="text"
                   value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSummary(val);
+                    // Only sync with content notes if they are empty or exactly match the previous summary
+                    // This prevents overwriting user's custom notes
+                    if (!contentNotes || contentNotes.trim() === '') {
+                      setContentNotes(val);
+                      setSharedNotes(val);
+                    }
+                  }}
                   placeholder="Enter your JAM session topic..."
                   className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:border-blue-400"
                 />
@@ -1024,29 +1298,19 @@ const JamSessions: React.FC = () => {
                 </select>
               </div>
               
-              <div>
-                <label className="block text-white text-sm font-semibold mb-2">Curriculum</label>
-                <select 
-                  value={curriculum}
-                  onChange={(e) => setCurriculum(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white focus:outline-none focus:border-blue-400"
-                >
-                  <option value="" className="bg-gray-800 text-white">Select curriculum...</option>
-                  <option value="ib-pyp" className="bg-gray-800 text-white">IB PYP</option>
-                  <option value="ib-myp" className="bg-gray-800 text-white">IB MYP</option>
-                  <option value="ib-dp" className="bg-gray-800 text-white">IB DP</option>
-                  <option value="cbse" className="bg-gray-800 text-white">CBSE</option>
-                  <option value="cambridge" className="bg-gray-800 text-white">Cambridge</option>
-                </select>
-              </div>
+
             
               <button
                 onClick={handleSearchWeb}
                 disabled={isWebSearching}
                 className="w-full mt-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition disabled:opacity-60"
               >
-                {isWebSearching ? 'Searching the Web…' : 'Search the Web'}
+                {isWebSearching ? 'Searching with AI…' : 'Search with AI'}
               </button>
+
+
+              
+
               
               <button
                 onClick={handleClearFilters}
@@ -1213,8 +1477,17 @@ const JamSessions: React.FC = () => {
               
               {/* Timer Display - Top right of robot with participants */}
               {timerActive && (
-                <div className="absolute -top-4 -right-4 text-2xl font-bold text-red-400 bg-black/50 rounded-full px-3 py-1">
-                  {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                <div className="absolute -top-4 -right-4">
+                  {/* Warning text when 5 seconds or less remain */}
+                  {showWarning && (
+                    <div className="text-red-400 text-sm font-bold bg-black/70 rounded px-2 py-1 mb-1 animate-pulse">
+                      ⚠️ Recording ending soon!
+                    </div>
+                  )}
+                  {/* Timer */}
+                  <div className="text-2xl font-bold text-red-400 bg-black/50 rounded-full px-3 py-1">
+                    {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                  </div>
                 </div>
               )}
               {/* Removed participants count */}
@@ -1292,6 +1565,7 @@ const JamSessions: React.FC = () => {
                 onChange={(e) => {
                   const val = e.target.value;
                   setSharedNotes(val);
+                  setContentNotes(val);
                   channelRef.current?.send({ type: 'broadcast', event: 'notes_update', payload: { text: val } });
                 }}
                 placeholder="Type notes visible to everyone in this room..."
@@ -1395,7 +1669,7 @@ const JamSessions: React.FC = () => {
           <h3 className="text-xl font-bold text-white mb-4">AI Summary</h3>
           <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">
             {createdContent?.content
-              ? `Here’s a concise Speak‑style recap of “${createdContent.title}”. Focus on the big idea, a vivid example, and one tiny action you can do now.
+              ? `Here's a concise Speak‑style recap of "${createdContent.title}". Focus on the big idea, a vivid example, and one tiny action you can do now.
 
 ${createdContent.content.split('\n').slice(0, 8).join('\n')}`
               : 'Generate or search content to view insights.'}
@@ -1470,6 +1744,118 @@ ${createdContent.content.split('\n').slice(0, 8).join('\n')}`
               </div>
             {/* Charts */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div className="bg-white/10 rounded-lg p-4 border border-white/20 md:col-span-2">
+                <div className="text-white font-semibold mb-2">Words Per Minute Analysis</div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* WPM Bar Chart */}
+                  <div>
+                    <div className="text-white text-sm mb-2">WPM by Recording</div>
+                    <Bar
+                      data={{
+                        labels: recordings.map(r => r.title.length > 14 ? r.title.slice(0,14) + '…' : r.title),
+                        datasets: [{
+                          label: 'WPM',
+                          data: recordings.map(r => recordingInsights[r.id]?.wpm ?? 0),
+                          backgroundColor: ['#f59e0b'],
+                          borderColor: '#ffffff20',
+                          borderWidth: 1
+                        }]
+                      }}
+                      options={{
+                        responsive: true,
+                        plugins: {
+                          legend: { display: false, labels: { color: '#e5e7eb', font: { size: 12 } } },
+                          tooltip: { 
+                            enabled: true,
+                            callbacks: {
+                              label: function(context) {
+                                return `WPM: ${context.parsed.y}`;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          x: { ticks: { color: '#e5e7eb' } },
+                          y: { 
+                            ticks: { color: '#e5e7eb' },
+                            grid: { color: '#ffffff10' },
+                            suggestedMin: 0,
+                            suggestedMax: 200
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                  
+                  {/* WPM Trend Line Chart */}
+                  <div>
+                    <div className="text-white text-sm mb-2">WPM Trend Over Time</div>
+                    <Line
+                      data={{
+                        labels: recordings.map(r => r.title.length > 14 ? r.title.slice(0,14) + '…' : r.title),
+                        datasets: [{
+                          label: 'WPM',
+                          data: recordings.map(r => recordingInsights[r.id]?.wpm ?? 0),
+                          borderColor: '#f59e0b',
+                          backgroundColor: 'rgba(245,158,11,0.25)',
+                          tension: 0.3,
+                          fill: true,
+                          pointBackgroundColor: '#f59e0b',
+                          pointBorderColor: '#ffffff',
+                          pointBorderWidth: 2
+                        }]
+                      }}
+                      options={{
+                        responsive: true,
+                        plugins: { 
+                          legend: { display: false, labels: { color: '#e5e7eb', font: { size: 12 } } },
+                          tooltip: {
+                            callbacks: {
+                              label: function(context) {
+                                return `WPM: ${context.parsed.y}`;
+                              }
+                            }
+                          }
+                        },
+                        scales: { 
+                          x: { ticks: { color: '#e5e7eb' } }, 
+                          y: { 
+                            ticks: { color: '#e5e7eb' },
+                            grid: { color: '#ffffff10' },
+                            suggestedMin: 0,
+                            suggestedMax: 200
+                          } 
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                {/* WPM Statistics */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                  {(() => {
+                    const wpmValues = recordings.map(r => recordingInsights[r.id]?.wpm ?? 0).filter(wpm => wpm > 0);
+                    const avgWpm = wpmValues.length ? Math.round(wpmValues.reduce((a, b) => a + b, 0) / wpmValues.length) : 0;
+                    const minWpm = wpmValues.length ? Math.min(...wpmValues) : 0;
+                    const maxWpm = wpmValues.length ? Math.max(...wpmValues) : 0;
+                    const targetWpm = 150; // Ideal WPM range
+                    
+                    return [
+                      { label: 'Average WPM', value: avgWpm, bg: 'from-pink-500/20 to-fuchsia-500/20' },
+                      { label: 'Best WPM', value: maxWpm, bg: 'from-amber-500/20 to-orange-500/20' },
+                      { label: 'Lowest WPM', value: minWpm, bg: 'from-cyan-500/20 to-blue-500/20' },
+                      { label: 'Target WPM', value: targetWpm, bg: 'from-emerald-500/20 to-teal-500/20' }
+                    ].map(t => (
+                      <div key={t.label} className={`bg-gradient-to-br ${t.bg} rounded-xl p-3 border border-white/20 shadow-lg backdrop-blur-sm`}> 
+                        <div className="text-gray-300 text-xs uppercase tracking-wide">{t.label}</div>
+                        <div className="text-white text-xl font-extrabold mt-1 drop-shadow">{t.value}</div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+              
+              {/* Keep other charts */}
               <div className="bg-white/10 rounded-lg p-4 border border-white/20">
                 <div className="text-white font-semibold mb-2">Words per Recording</div>
                 <Bar
@@ -1515,20 +1901,7 @@ ${createdContent.content.split('\n').slice(0, 8).join('\n')}`
                   }}
                 />
                 </div>
-              <div className="bg-white/10 rounded-lg p-4 border border-white/20 md:col-span-2">
-                <div className="text-white font-semibold mb-2">Communication Style Distribution</div>
-                <Pie
-                  data={{
-                    labels: ['Informative','Persuasive','Narrative','Descriptive','Unknown'],
-                    datasets: [{
-                      label: 'Style',
-                      data: ['Informative','Persuasive','Narrative','Descriptive','Unknown'].map(s => recordings.reduce((acc, r) => acc + ((recordingInsights[r.id]?.style === s) ? 1 : 0), 0)),
-                      backgroundColor: ['#22d3ee','#f472b6','#f59e0b','#34d399','#94a3b8']
-                    }]
-                  }}
-                  options={{ responsive: true, plugins: { legend: { labels: { color: '#e5e7eb', font: { size: 12 } } } } }}
-                />
-              </div>
+
               {/* Recent recordings quick list with hover feedback */}
               <div className="bg-white/10 rounded-lg p-4 border border-white/20 md:col-span-2">
                 <div className="text-white font-semibold mb-2">Recent Recordings</div>
@@ -1644,6 +2017,19 @@ ${createdContent.content.split('\n').slice(0, 8).join('\n')}`
         </div>
       </header>
 
+      {/* Back to Dashboard Button */}
+      <div className="px-16 py-2">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 border border-white/30 hover:border-white/50 shadow-md hover:shadow-lg transform hover:scale-105"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </button>
+      </div>
+
       {/* Main Content */}
       <main className="flex-1 flex justify-center pt-12 px-4">
         <div className="max-w-8xl w-full flex justify-center gap-12">
@@ -1682,6 +2068,31 @@ ${createdContent.content.split('\n').slice(0, 8).join('\n')}`
           {/* Right Sidebar removed for Insights */}
         </div>
       </main>
+
+      {/* Success Popup Notification */}
+      {showSaveSuccess && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right duration-300">
+          <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg border border-green-400 flex items-center space-x-3">
+            <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div>
+              <div className="font-semibold">Notes Saved Successfully!</div>
+              <div className="text-sm opacity-90">Your notes have been added to Recent Activity</div>
+            </div>
+            <button 
+              onClick={() => setShowSaveSuccess(false)}
+              className="ml-4 text-white/80 hover:text-white transition-colors"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

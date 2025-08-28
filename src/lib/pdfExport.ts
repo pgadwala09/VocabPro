@@ -350,45 +350,31 @@ class PDFExportService {
 
   // Quick export function for download - simplified version with timeout
   async downloadReport(data: PronunciationReportData, filename?: string): Promise<void> {
-    // Set a 10-second timeout to prevent getting stuck
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('PDF export timeout')), 10000);
-    });
-
-    const exportPromise = (async () => {
-      try {
-        console.log('Creating PDF document...');
-        
-        // Create a simpler PDF without html2canvas to avoid getting stuck
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4',
-        });
-
-        console.log('Adding content to PDF...');
-        
-        // Add content directly to PDF
-        this.addTextToPDF(pdf, data);
-
-        console.log('Saving PDF...');
-        
-        // Save the PDF
-        const pdfName = filename || `pronunciation-report-${data.userName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
-        pdf.save(pdfName);
-        
-        console.log('PDF saved successfully:', pdfName);
-        
-      } catch (error) {
-        console.error('Error in PDF generation:', error);
-        throw error;
-      }
-    })();
-
     try {
-      await Promise.race([exportPromise, timeoutPromise]);
+      console.log('Creating PDF document...');
+      
+      // Create PDF with better error handling
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      console.log('Adding content to PDF...');
+      
+      // Add content directly to PDF with improved formatting
+      this.addTextToPDF(pdf, data);
+
+      console.log('Saving PDF...');
+      
+      // Save the PDF with proper filename
+      const pdfName = filename || `pronunciation-report-${data.userName.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(pdfName);
+      
+      console.log('PDF saved successfully:', pdfName);
+      
     } catch (error) {
-      console.error('PDF export failed, using fallback:', error);
+      console.error('Error in PDF generation:', error);
       // Fallback: create a simple text-based report
       this.createFallbackReport(data);
     }
@@ -401,25 +387,33 @@ class PDFExportService {
     const margin = 20;
     const contentWidth = pageWidth - (margin * 2);
 
-    // Header
-    pdf.setFontSize(24);
-    pdf.setTextColor(0, 100, 200);
-    pdf.text('VocabPro Pronunciation Report', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 15;
+    try {
+      // Header
+      pdf.setFontSize(24);
+      pdf.setTextColor(0, 100, 200);
+      pdf.text('VocabPro Pronunciation Report', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 15;
 
-    pdf.setFontSize(14);
-    pdf.setTextColor(100, 100, 100);
-    pdf.text(`Comprehensive Analysis for ${data.userName}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 10;
+      pdf.setFontSize(14);
+      pdf.setTextColor(100, 100, 100);
+      const userName = data.userName || 'User';
+      pdf.text(`Comprehensive Analysis for ${userName}`, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 10;
 
-    pdf.setFontSize(12);
-    pdf.text(`Generated on ${new Date(data.reportDate).toLocaleDateString()}`, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 25;
+      pdf.setFontSize(12);
+      const reportDate = data.reportDate ? new Date(data.reportDate).toLocaleDateString() : new Date().toLocaleDateString();
+      pdf.text(`Generated on ${reportDate}`, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 25;
+
+    } catch (error) {
+      console.error('Error in addTextToPDF:', error);
+      throw error;
+    }
 
     // Executive Summary
     pdf.setFontSize(18);
     pdf.setTextColor(0, 0, 0);
-    pdf.text('📊 Executive Summary', margin, yPos);
+    pdf.text('Executive Summary', margin, yPos);
     yPos += 15;
 
     pdf.setFontSize(12);
@@ -439,7 +433,7 @@ class PDFExportService {
     // Word Performance
     if (data.pronunciationScores.length > 0) {
       pdf.setFontSize(16);
-      pdf.text('🎯 Word Performance Analysis', margin, yPos);
+      pdf.text('Word Performance Analysis', margin, yPos);
       yPos += 12;
 
       pdf.setFontSize(10);
@@ -453,7 +447,7 @@ class PDFExportService {
 
     // Communication Style
     pdf.setFontSize(16);
-    pdf.text('🗣️ Communication Style', margin, yPos);
+    pdf.text('Communication Style', margin, yPos);
     yPos += 12;
 
     pdf.setFontSize(12);
@@ -474,13 +468,13 @@ class PDFExportService {
     if (data.achievements.length > 0) {
       pdf.setFontSize(16);
       pdf.setTextColor(0, 150, 0);
-      pdf.text('🏆 Achievements', margin, yPos);
+      pdf.text('Achievements', margin, yPos);
       yPos += 12;
 
       pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
       data.achievements.forEach(achievement => {
-        pdf.text(`✅ ${achievement}`, margin + 5, yPos);
+        pdf.text(`✓ ${achievement}`, margin + 5, yPos);
         yPos += 8;
       });
       yPos += 10;
@@ -490,13 +484,13 @@ class PDFExportService {
     if (data.focusAreas.length > 0) {
       pdf.setFontSize(16);
       pdf.setTextColor(200, 100, 0);
-      pdf.text('🎯 Focus Areas', margin, yPos);
+      pdf.text('Focus Areas', margin, yPos);
       yPos += 12;
 
       pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
       data.focusAreas.forEach(area => {
-        pdf.text(`🔍 ${area}`, margin + 5, yPos);
+        pdf.text(`• ${area}`, margin + 5, yPos);
         yPos += 8;
       });
       yPos += 15;
@@ -505,7 +499,7 @@ class PDFExportService {
     // Recommendations
     pdf.setFontSize(16);
     pdf.setTextColor(0, 0, 200);
-    pdf.text('💡 Recommendations', margin, yPos);
+    pdf.text('Recommendations', margin, yPos);
     yPos += 12;
 
     pdf.setFontSize(11);
@@ -531,54 +525,63 @@ class PDFExportService {
 
   // Fallback method if PDF generation fails
   private createFallbackReport(data: PronunciationReportData): void {
-    const reportContent = `
+    try {
+      const reportContent = `
 VocabPro Pronunciation Report
 ============================
-User: ${data.userName}
-Date: ${new Date(data.reportDate).toLocaleDateString()}
+User: ${data.userName || 'User'}
+Date: ${data.reportDate ? new Date(data.reportDate).toLocaleDateString() : new Date().toLocaleDateString()}
 
 EXECUTIVE SUMMARY
 ================
-Overall Score: ${Math.round(data.overallScore * 100)}%
-Words Practiced: ${data.totalWords}
-Total Recordings: ${data.totalRecordings}
-Practice Time: ${Math.round(data.timeSpent)} minutes
+Overall Score: ${Math.round((data.overallScore || 0) * 100)}%
+Words Practiced: ${data.totalWords || 0}
+Total Recordings: ${data.totalRecordings || 0}
+Practice Time: ${Math.round(data.timeSpent || 0)} minutes
 
 COMMUNICATION STYLE
 ==================
-Clarity: ${Math.round(data.communicationStyle.clarity * 100)}%
-Fluency: ${Math.round(data.communicationStyle.fluency * 100)}%
-Intonation: ${Math.round(data.communicationStyle.intonation * 100)}%
-Speaking Rate: ${data.communicationStyle.speakingRate}
+Clarity: ${Math.round((data.communicationStyle?.clarity || 0) * 100)}%
+Fluency: ${Math.round((data.communicationStyle?.fluency || 0) * 100)}%
+Intonation: ${Math.round((data.communicationStyle?.intonation || 0) * 100)}%
+Speaking Rate: ${data.communicationStyle?.speakingRate || 'normal'}
 
 ACHIEVEMENTS
 ===========
-${data.achievements.map(a => `✅ ${a}`).join('\n')}
+${(data.achievements || []).map(a => `✓ ${a}`).join('\n')}
 
 FOCUS AREAS
 ===========
-${data.focusAreas.map(a => `🎯 ${a}`).join('\n')}
+${(data.focusAreas || []).map(a => `• ${a}`).join('\n')}
 
 RECOMMENDATIONS
 ==============
-${data.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+${(data.recommendations || []).map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
 Generated by VocabPro AI
-    `.trim();
+      `.trim();
 
-    // Create and download as text file
-    const blob = new Blob([reportContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `pronunciation-report-${data.userName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    URL.revokeObjectURL(url);
+          // Create and download as text file
+      const blob = new Blob([reportContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      const userName = data.userName || 'User';
+      link.download = `pronunciation-report-${userName.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      URL.revokeObjectURL(url);
+      
+      console.log('Fallback text report downloaded successfully');
+    } catch (error) {
+      console.error('Error creating fallback report:', error);
+      // Last resort: show alert with basic info
+      alert(`Report generation failed. Here's a summary:\n\nOverall Score: ${Math.round((data.overallScore || 0) * 100)}%\nWords Practiced: ${data.totalWords || 0}\nTotal Recordings: ${data.totalRecordings || 0}`);
+    }
   }
 
   // Share report via native Web Share API

@@ -210,6 +210,19 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
           )}
         </div>
       </header>
+
+      {/* Back to Dashboard Button */}
+      <div className="px-8 py-2">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 border border-white/30 hover:border-white/50 shadow-md hover:shadow-lg transform hover:scale-105"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </button>
+      </div>
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-start pt-12 px-4 w-full">
         {/* Step 1: Choose an Option */}
@@ -384,6 +397,44 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
             <span className="text-sm text-blue-400">or drag files in</span>
           </div>
         </div>
+        {/* Vocabulary List Section */}
+        <div className="w-full max-w-6xl mb-12">
+          <div className="flex items-center mb-4">
+            <span className="text-xl font-bold text-white mr-3">Vocabulary Words</span>
+            <span className="text-base text-blue-200">- Words for pronunciation and flashcards</span>
+          </div>
+          {vocabList.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+              {vocabList.map((vocab, index) => (
+                <div 
+                  key={index} 
+                  className="flex items-center bg-white/90 rounded-lg shadow p-4 gap-3 hover:shadow-lg transition cursor-pointer border-2 border-transparent hover:border-blue-400"
+                  onClick={() => {
+                    // Set this word as the selected word for pronunciation practice
+                    localStorage.setItem('selectedWord', vocab.word);
+                    // Navigate to pronunciation practice
+                    navigate('/pronunciation');
+                  }}
+                >
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">{vocab.word.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="flex flex-col flex-1">
+                    <span className="font-semibold text-gray-800 text-sm truncate">{vocab.word}</span>
+                    <span className="text-xs text-gray-500 truncate">{vocab.meaning}</span>
+                  </div>
+                  <div className="text-xs text-blue-600 font-semibold">Click to practice</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-gray-400 py-8 bg-white/10 rounded-lg">
+              <div className="text-lg mb-2">No vocabulary words yet</div>
+              <div className="text-sm">Add words using "Paste Text" to get started!</div>
+            </div>
+          )}
+        </div>
+
         {/* Library Section */}
         <div className="w-full max-w-6xl mb-12">
           <div className="flex items-center mb-4">
@@ -408,6 +459,13 @@ const VocabPractice: React.FC<VocabPracticeProps> = ({ libraryItems, setLibraryI
         {/* Next and Clear buttons at far right of the page */}
         <div className="w-full flex justify-end pr-8 mb-12">
           <div className="flex gap-3">
+            <button
+              className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold shadow hover:bg-green-700 transition disabled:opacity-50"
+              onClick={() => navigate('/flashcards')}
+              disabled={vocabList.length === 0}
+            >
+              Practice Flashcards
+            </button>
             <button
               className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition disabled:opacity-50"
               onClick={() => navigate('/pronunciation')}

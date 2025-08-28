@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, memo, useCallback } from 'react';
 import { Brain, Sparkles, Settings, BarChart3, Clock, Users, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { analyzeDebateTranscript, transcribeAudioWhisper } from '../lib/insights';
+import { supabase } from '../lib/supabase';
 
 const Debates: React.FC = () => {
   const [activeTab, setActiveTab] = useState('studio');
@@ -24,6 +25,11 @@ const Debates: React.FC = () => {
     debateStyle: '',
     sideSelection: ''
   });
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
+  const [debateRecordings, setDebateRecordings] = useState([]);
+  const [isLoadingRecordings, setIsLoadingRecordings] = useState(true);
+  const [chartKey, setChartKey] = useState(0);
+  const [loadingRecordings, setLoadingRecordings] = useState(false);
 
   const { user } = useAuth();
   const avatarUrl = user?.user_metadata?.avatar_url;
@@ -163,6 +169,74 @@ const Debates: React.FC = () => {
       }
     } catch {}
   }, []);
+
+  // Load debate recordings from database
+  useEffect(() => {
+    const loadDebateRecordings = async () => {
+      console.log('🔄 Starting to load debate recordings...');
+      setLoadingRecordings(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        console.log('👤 User:', user?.id);
+        
+        if (user) {
+          console.log('🔍 Querying debate_recordings table for user:', user.id);
+          
+          // First, let's check if there are ANY recordings in the table
+          const { data: allData, error: allError } = await supabase
+            .from('debate_recordings')
+            .select('*');
+          
+          console.log('📋 All recordings in table:', allData?.length || 0);
+          if (allData && allData.length > 0) {
+            console.log('📋 Sample recording user_id:', allData[0].user_id);
+            console.log('📋 Sample recording data:', allData[0]);
+          }
+          
+          // Now query for specific user
+          const { data, error } = await supabase
+            .from('debate_recordings')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+          
+          if (error) {
+            console.error('❌ Error querying debate_recordings:', error);
+          } else {
+            console.log('✅ Debate recordings data for user:', data);
+            console.log('📊 Number of recordings for user:', data?.length || 0);
+            
+            // Check for duplicates and log unique recordings
+            if (data && data.length > 0) {
+              const uniqueRecordings = data.filter((recording, index, self) => 
+                index === self.findIndex(r => r.id === recording.id)
+              );
+              console.log('🔍 Unique recordings (after deduplication):', uniqueRecordings.length);
+              
+              if (uniqueRecordings.length !== data.length) {
+                console.log('⚠️ Found duplicate recordings! Original:', data.length, 'Unique:', uniqueRecordings.length);
+              }
+              
+              setDebateRecordings(uniqueRecordings);
+              setChartKey(prev => prev + 1); // Force chart update
+            } else {
+              setDebateRecordings(data || []);
+              setChartKey(prev => prev + 1); // Force chart update
+            }
+          }
+        } else {
+          console.log('❌ No user found');
+        }
+      } catch (error) {
+        console.error('❌ Error loading debate recordings:', error);
+      } finally {
+        setLoadingRecordings(false);
+        setIsLoadingRecordings(false);
+        console.log('🏁 Finished loading debate recordings');
+      }
+    };
+    loadDebateRecordings();
+  }, []);
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -204,6 +278,7 @@ const Debates: React.FC = () => {
   };
 
   const handleSelectTopic = (topic: any) => {
+    setSelectedTopicId(topic.id);
     setFormData(prev => ({
       ...prev,
       topic: topic.title
@@ -295,15 +370,39 @@ const Debates: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Topic */}
           <div className="col-span-2">
-            <label className="block text-white text-sm font-medium mb-2">Select Topic</label>
-            <input
-              type="text"
-              name="topic"
-              value={formData.topic}
-              onChange={handleInputChange}
-              className="w-full bg-white border border-white/20 rounded-lg px-4 py-2 text-gray-900"
-              placeholder="Enter your debate topic"
-            />
+            <label className="block text-white text-sm font-medium mb-2">
+              Select Topic
+              {selectedTopicId && (
+                <span className="ml-2 text-green-400 text-xs">✓ Topic Selected</span>
+              )}
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                name="topic"
+                value={formData.topic}
+                onChange={handleInputChange}
+                className={`w-full border rounded-lg px-4 py-2 transition-all duration-300 ${
+                  selectedTopicId 
+                    ? 'bg-green-50 border-green-400 text-green-900 pr-20' 
+                    : 'bg-white border-white/20 text-gray-900'
+                }`}
+                placeholder={selectedTopicId ? "Topic selected from below" : "Enter your debate topic or select from below"}
+                readOnly={!!selectedTopicId}
+              />
+              {selectedTopicId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTopicId(null);
+                    setFormData(prev => ({ ...prev, topic: '' }));
+                  }}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Debate Style */}
@@ -402,20 +501,36 @@ const Debates: React.FC = () => {
           {debateTopics.map((topic) => (
             <div
               key={topic.id}
-              className="bg-white/10 rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-all duration-300 cursor-pointer transform hover:scale-105"
+              className={`rounded-xl p-6 border transition-all duration-300 cursor-pointer transform hover:scale-105 relative ${
+                selectedTopicId === topic.id
+                  ? 'bg-gradient-to-br from-purple-500/30 to-blue-500/30 border-purple-400/50 shadow-lg shadow-purple-500/25'
+                  : 'bg-white/10 border-white/20 hover:bg-white/20'
+              }`}
               onClick={() => handleSelectTopic(topic)}
             >
+              {selectedTopicId === topic.id && (
+                <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                  <span className="text-white text-xs font-bold">✓</span>
+                </div>
+              )}
               <div className="flex items-center mb-4">
                 <div className="text-3xl mr-3">{topic.icon}</div>
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-white mb-1">{topic.title}</h3>
-                  <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                    topic.difficulty === 'Beginner' ? 'bg-green-500/20 text-green-400' :
-                    topic.difficulty === 'Intermediate' ? 'bg-blue-500/20 text-blue-400' :
-                    'bg-red-500/20 text-red-400'
-                  }`}>
-                    {topic.difficulty}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                      topic.difficulty === 'Beginner' ? 'bg-green-500/20 text-green-400' :
+                      topic.difficulty === 'Intermediate' ? 'bg-blue-500/20 text-blue-400' :
+                      'bg-red-500/20 text-red-400'
+                    }`}>
+                      {topic.difficulty}
+                    </span>
+                    {selectedTopicId === topic.id && (
+                      <span className="inline-block px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                        ✓ Selected
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -456,7 +571,7 @@ const Debates: React.FC = () => {
       </div>
     </div>
   );
-  const renderInsightsTab = () => <InsightsTab liveDebates={recentDebates} />;
+  const renderInsightsTab = () => <InsightsTab liveDebates={debateRecordings} />;
 
   function InsightsTab({ liveDebates }: { liveDebates: any[] }) {
     // Lazy load chart libraries to avoid startup crashes if not installed
@@ -491,31 +606,157 @@ const Debates: React.FC = () => {
       })();
     }, []);
 
-    // Enhanced analytics data with real debate results
-    const analyticsData = useMemo(() => {
-      // Get real debate results from localStorage
-      const debateResults = JSON.parse(localStorage.getItem('debateResults') || '[]');
-      const totalDebates = debateResults.length;
-      
-      // Categorize debates by type
+    // Stable chart data to prevent flickering
+    const chartData = useMemo(() => {
+      if (debateRecordings.length === 0) {
+        return {
+          labels: [],
+          datasets: [{
+            data: [],
+            backgroundColor: [],
+            borderWidth: 0
+          }]
+        };
+      }
+
+      // Categorize debates by type from actual recordings
       const debateTypes = {
-        '1-on-1': debateResults.filter((d: any) => d.debateStyle === '1-on-1').length,
-        'Debate with AI': debateResults.filter((d: any) => d.debateStyle === 'ai').length,
-        'Team': debateResults.filter((d: any) => d.debateStyle === 'team').length,
-        'Panel': debateResults.filter((d: any) => d.debateStyle === 'panel').length
+        '1-on-1': debateRecordings.filter((d: any) => 
+          d.debate_style === '1-on-1' || 
+          d.debate_style === '1on1' ||
+          d.debate_style === 'one-on-one' ||
+          d.debate_style === 'One-on-One'
+        ).length,
+        'Debate with AI': debateRecordings.filter((d: any) => 
+          d.debate_style === 'ai' || 
+          d.debate_style === 'Debate with AI' || 
+          d.debate_style === 'ai-debate' ||
+          d.debate_style === 'AI' ||
+          d.debate_style === 'AI Debate' ||
+          d.debate_style === 'ai_debate' ||
+          d.debate_style === 'debate_with_ai'
+        ).length,
+        'Team': debateRecordings.filter((d: any) => 
+          d.debate_style === 'team' || 
+          d.debate_style === 'Team Debate'
+        ).length,
+        'Panel': debateRecordings.filter((d: any) => 
+          d.debate_style === 'panel' || 
+          d.debate_style === 'Panel Debate'
+        ).length
+      };
+
+      // Debug: Log debate type counts
+      console.log('🔍 Debate type counts:', debateTypes);
+      
+      // Filter out zero values to prevent empty chart segments
+      const filteredTypes = Object.entries(debateTypes).filter(([_, count]) => count > 0);
+      
+      console.log('🔍 Filtered debate types:', filteredTypes);
+      
+      return {
+        labels: filteredTypes.map(([type, _]) => type),
+        datasets: [{
+          data: filteredTypes.map(([_, count]) => count),
+          backgroundColor: filteredTypes.map(([type, _]) => 
+            type === '1-on-1' ? '#a78bfa' :
+            type === 'Debate with AI' ? '#22d3ee' :
+            type === 'Team' ? '#34d399' : '#fb7185'
+          ),
+          borderWidth: 2,
+          borderColor: 'rgba(255,255,255,0.2)'
+        }]
+      };
+    }, [debateRecordings]);
+
+    // Memoized chart component to prevent flickering
+    const MemoizedChart = useCallback(({ data, isReady }: { data: any, isReady: boolean }) => {
+      if (!isReady || !RCDoughnut || data.datasets[0].data.length === 0) {
+        return isReady ? (
+          <div className="text-gray-300 text-sm">No data to display</div>
+        ) : (
+          <div className="text-gray-300 text-sm animate-pulse">Loading chart...</div>
+        );
+      }
+      
+      return (
+        <RCDoughnut
+          data={data}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Completely disable animations
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: '#e5e7eb', font: { size: 14 } }
+              }
+            }
+          }}
+        />
+      );
+    }, [RCDoughnut]);
+
+    // Clean analytics data calculation based on actual recordings
+    const analyticsData = useMemo(() => {
+      // Use only actual debate recordings from database
+      const totalDebates = debateRecordings.length;
+      
+      // Debug: Log all debate recordings and their styles
+      console.log('🔍 All debate recordings:', debateRecordings);
+      console.log('🔍 Debate styles found:', debateRecordings.map(d => d.debate_style));
+      
+      // Categorize debates by type from actual recordings
+      const debateTypes = {
+        '1-on-1': debateRecordings.filter((d: any) => 
+          d.debate_style === '1-on-1' || 
+          d.debate_style === '1on1' ||
+          d.debate_style === 'one-on-one' ||
+          d.debate_style === 'One-on-One'
+        ).length,
+        'Debate with AI': debateRecordings.filter((d: any) => 
+          d.debate_style === 'ai' || 
+          d.debate_style === 'Debate with AI' || 
+          d.debate_style === 'ai-debate' ||
+          d.debate_style === 'AI' ||
+          d.debate_style === 'AI Debate' ||
+          d.debate_style === 'ai_debate' ||
+          d.debate_style === 'debate_with_ai'
+        ).length,
+        'Team': debateRecordings.filter((d: any) => 
+          d.debate_style === 'team' || 
+          d.debate_style === 'Team Debate'
+        ).length,
+        'Panel': debateRecordings.filter((d: any) => 
+          d.debate_style === 'panel' || 
+          d.debate_style === 'Panel Debate'
+        ).length
       };
       
-      // Calculate debate-specific metrics from real data
-      const oneOnOneResults = debateResults.filter((d: any) => d.debateStyle === '1-on-1');
-      const aiDebateResults = debateResults.filter((d: any) => d.debateStyle === 'ai');
+      // Calculate metrics from actual recordings
+      const oneOnOneRecordings = debateRecordings.filter((d: any) => 
+        d.debate_style === '1-on-1' || 
+        d.debate_style === '1on1' ||
+        d.debate_style === 'one-on-one' ||
+        d.debate_style === 'One-on-One'
+      );
+      const aiDebateRecordings = debateRecordings.filter((d: any) => 
+        d.debate_style === 'ai' || 
+        d.debate_style === 'Debate with AI' || 
+        d.debate_style === 'ai-debate' ||
+        d.debate_style === 'AI' ||
+        d.debate_style === 'AI Debate' ||
+        d.debate_style === 'ai_debate' ||
+        d.debate_style === 'debate_with_ai'
+      );
       
-      // 1-on-1 Debate specific metrics from real data
-      const oneOnOneMetrics = oneOnOneResults.length > 0 ? {
-        totalRounds: oneOnOneResults.reduce((sum: number, d: any) => sum + (d.totalRounds || 4), 0),
-        averageRoundScore: Math.round(oneOnOneResults.reduce((sum: number, d: any) => sum + d.userScore, 0) / oneOnOneResults.length),
-        completionRate: Math.round((oneOnOneResults.filter((d: any) => d.roundScores?.length === 4).length / oneOnOneResults.length) * 100),
-        topScore: Math.max(...oneOnOneResults.map((d: any) => d.userScore)),
-        improvementTrend: Math.round((oneOnOneResults[0]?.userScore - oneOnOneResults[oneOnOneResults.length - 1]?.userScore) / oneOnOneResults.length)
+      // 1-on-1 Debate metrics from actual recordings
+      const oneOnOneMetrics = oneOnOneRecordings.length > 0 ? {
+        totalRounds: oneOnOneRecordings.reduce((sum: number, d: any) => sum + (d.total_rounds || 2), 0),
+        averageRoundScore: Math.round(oneOnOneRecordings.reduce((sum: number, d: any) => sum + (d.user_score || 0), 0) / oneOnOneRecordings.length),
+        completionRate: Math.round((oneOnOneRecordings.filter((d: any) => d.completed).length / oneOnOneRecordings.length) * 100),
+        topScore: Math.max(...oneOnOneRecordings.map((d: any) => d.user_score || 0)),
+        improvementTrend: Math.round((oneOnOneRecordings[0]?.user_score || 0) - (oneOnOneRecordings[oneOnOneRecordings.length - 1]?.user_score || 0))
       } : {
         totalRounds: 0,
         averageRoundScore: 0,
@@ -524,13 +765,13 @@ const Debates: React.FC = () => {
         improvementTrend: 0
       };
       
-      // AI Debate specific metrics from real data
-      const aiDebateMetrics = aiDebateResults.length > 0 ? {
-        totalSessions: aiDebateResults.length,
-        averageSessionLength: Math.round(aiDebateResults.reduce((sum: number, d: any) => sum + (d.duration || 5), 0) / aiDebateResults.length),
-        aiResponseQuality: Math.round(aiDebateResults.reduce((sum: number, d: any) => sum + d.aiScore, 0) / aiDebateResults.length),
-        userEngagement: Math.round((aiDebateResults.filter((d: any) => d.userScore > 50).length / aiDebateResults.length) * 100),
-        topicDiversity: new Set(aiDebateResults.map((d: any) => d.topic)).size
+      // AI Debate metrics from actual recordings
+      const aiDebateMetrics = aiDebateRecordings.length > 0 ? {
+        totalSessions: aiDebateRecordings.length,
+        averageSessionLength: Math.round(aiDebateRecordings.reduce((sum: number, d: any) => sum + (d.duration || 5), 0) / aiDebateRecordings.length),
+        aiResponseQuality: Math.round(aiDebateRecordings.reduce((sum: number, d: any) => sum + (d.ai_score || 0), 0) / aiDebateRecordings.length),
+        userEngagement: Math.round((aiDebateRecordings.filter((d: any) => (d.user_score || 0) > 50).length / aiDebateRecordings.length) * 100),
+        topicDiversity: new Set(aiDebateRecordings.map((d: any) => d.topic)).size
       } : {
         totalSessions: 0,
         averageSessionLength: 0,
@@ -539,21 +780,22 @@ const Debates: React.FC = () => {
         topicDiversity: 0
       };
       
-      const totalRecordings = liveDebates.reduce((s, d) => s + (d.recordings?.length || 0), 0);
-      const totalTopics = new Set([...liveDebates.map(d => d.topic), ...debateResults.map((d: any) => d.topic)]).size;
-      const totalMinutes = debateResults.reduce((sum: number, d: any) => sum + (d.duration || 5), 0);
+      // Calculate totals from actual recordings
+      const totalRecordings = debateRecordings.length;
+      const totalTopics = new Set(debateRecordings.map((d: any) => d.topic)).size;
+      const totalMinutes = debateRecordings.reduce((sum: number, d: any) => sum + (d.duration || 5), 0);
       
-      // Performance scores from real data
-      const performanceScores = debateResults.map((debate: any, index: number) => ({
+      // Performance scores from actual recordings
+      const performanceScores = debateRecordings.map((recording: any, index: number) => ({
         debateId: index + 1,
-        debateType: debate.debateStyle,
-        proScore: debate.userScore || 0,
-        conScore: debate.aiScore || 0,
-        topic: debate.topic || `Debate ${index + 1}`,
-        rounds: debate.totalRounds || 1,
-        duration: debate.duration || 5,
-        winner: debate.winner,
-        completedAt: debate.completedAt
+        debateType: recording.debate_style || 'Unknown',
+        proScore: recording.user_score || 0,
+        conScore: recording.ai_score || 0,
+        topic: recording.topic || `Debate ${index + 1}`,
+        rounds: recording.total_rounds || 1,
+        duration: recording.duration || 5,
+        winner: recording.winner,
+        completedAt: recording.created_at
       }));
       
       const averageProScore = performanceScores.length > 0 ? 
@@ -561,7 +803,7 @@ const Debates: React.FC = () => {
       const averageConScore = performanceScores.length > 0 ? 
         Math.round(performanceScores.reduce((sum, p) => sum + p.conScore, 0) / performanceScores.length) : 0;
       
-      // Generate contextual feedback based on real debate data
+      // Generate feedback based on actual recordings
       const feedbackForLowScores = performanceScores
         .filter(p => p.proScore < 75)
         .map(p => ({
@@ -583,32 +825,31 @@ const Debates: React.FC = () => {
         averageConScore,
         feedbackForLowScores,
         oneOnOneMetrics,
-        aiDebateMetrics,
-        debateResults // Include raw results for detailed analysis
+        aiDebateMetrics
       };
-    }, [liveDebates]);
+    }, [debateRecordings]);
 
     // Generate contextual feedback based on debate type and score
     function generateContextualFeedback(score: number, topic: string, debateType: string): string {
       const feedbacks = {
         '1-on-1': {
           low: [
-            "In 1-on-1 debates, focus on building strong arguments across all 4 rounds. Practice your rebuttal skills for the CON position.",
-            "Work on maintaining consistency throughout all rounds. Each round should build upon the previous one.",
+            "In 1-on-1 debates, focus on building strong arguments across both rounds. Practice your rebuttal skills for the CON position.",
+            "Work on maintaining consistency throughout both rounds. Each round should build upon the previous one.",
             "Practice transitioning between PRO and CON positions. Both require different argument strategies.",
-            "Focus on round-by-round improvement. Your final round should be your strongest."
+            "Focus on round-by-round improvement. Your second round should be your strongest."
           ],
           medium: [
-            "Good 1-on-1 performance! Try to vary your argument styles between rounds.",
+            "Good 1-on-1 performance! Try to vary your argument styles between both rounds.",
             "Solid multi-round debate! Consider using different evidence types in each round.",
-            "Well done! Work on making your later rounds more compelling than earlier ones.",
+            "Well done! Work on making your second round more compelling than the first.",
             "Great effort! Practice making your CON arguments as strong as your PRO arguments."
           ],
           high: [
-            "Excellent 1-on-1 debate skills! Your multi-round consistency is impressive.",
-            "Outstanding performance across all rounds! Your argument development is strong.",
-            "Fantastic 1-on-1 debate! Your ability to maintain quality across rounds is commendable.",
-            "Superb multi-round debate! Your PRO and CON skills are well-balanced."
+            "Excellent 1-on-1 debate skills! Your consistency across both rounds is impressive.",
+            "Outstanding performance across both rounds! Your argument development is strong.",
+            "Fantastic 1-on-1 debate! Your ability to maintain quality across both rounds is commendable.",
+            "Superb two-round debate! Your PRO and CON skills are well-balanced."
           ]
         },
         'ai': {
@@ -667,97 +908,101 @@ const Debates: React.FC = () => {
           <p className="text-lg text-gray-300">Comprehensive insights across all debate formats</p>
         </div>
 
-        {/* Enhanced Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-purple-600 to-indigo-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">{analyticsData.totalDebates}</div>
-                <div className="opacity-80 text-sm">Total Debates</div>
+        {/* Enhanced Quick Stats - Only show when recordings exist */}
+        {debateRecordings.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-purple-600 to-indigo-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-3xl font-bold">{analyticsData.totalDebates}</div>
+                  <div className="opacity-80 text-sm">Total Debates</div>
+                </div>
+                <div className="text-4xl">🏆</div>
               </div>
-              <div className="text-4xl">🏆</div>
+            </div>
+            <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-3xl font-bold">{analyticsData.totalRecordings}</div>
+                  <div className="opacity-80 text-sm">Voice Recordings</div>
+                </div>
+                <div className="text-4xl">🎤</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-pink-600 to-rose-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-3xl font-bold">{analyticsData.totalTopics}</div>
+                  <div className="opacity-80 text-sm">Unique Topics</div>
+                </div>
+                <div className="text-4xl">💭</div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-600 to-teal-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-3xl font-bold">{analyticsData.averageProScore}</div>
+                  <div className="opacity-80 text-sm">Avg Pro Score</div>
+                </div>
+                <div className="text-4xl">⭐</div>
+              </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">{analyticsData.totalRecordings}</div>
-                <div className="opacity-80 text-sm">Voice Recordings</div>
-              </div>
-              <div className="text-4xl">🎤</div>
+        ) : (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-8 text-center">
+            <div className="text-6xl mb-4">📊</div>
+            <h3 className="text-2xl font-bold text-white mb-2">No Debate Data Available</h3>
+            <p className="text-gray-300 mb-4">Start recording debates to see your analytics dashboard</p>
+            <div className="text-sm text-gray-400">
+              Complete debates in any format to populate your dashboard with insights
             </div>
           </div>
-          <div className="bg-gradient-to-br from-pink-600 to-rose-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">{analyticsData.totalTopics}</div>
-                <div className="opacity-80 text-sm">Unique Topics</div>
-              </div>
-              <div className="text-4xl">💭</div>
-            </div>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-600 to-teal-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-3xl font-bold">{analyticsData.averageProScore}</div>
-                <div className="opacity-80 text-sm">Avg Pro Score</div>
-              </div>
-              <div className="text-4xl">⭐</div>
-            </div>
-          </div>
-        </div>
+        )}
 
-        {/* Debate Type Distribution */}
+
+
+        {/* Debate Type Distribution - Always show, with proper loading states */}
         <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
           <h2 className="text-2xl font-bold text-white mb-4">📊 Debate Type Distribution</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              {chartsReady && RCDoughnut ? (
-                <RCDoughnut
-                  data={{
-                    labels: Object.keys(analyticsData.debateTypes),
-                    datasets: [{
-                      data: Object.values(analyticsData.debateTypes),
-                      backgroundColor: ['#a78bfa', '#22d3ee', '#34d399', '#fb7185'],
-                      borderWidth: 2,
-                      borderColor: 'rgba(255,255,255,0.2)'
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    plugins: {
-                      legend: {
-                        position: 'bottom',
-                        labels: { color: '#e5e7eb', font: { size: 14 } }
-                      }
-                    }
-                  }}
-                />
-              ) : (
-                <div className="text-gray-300 text-sm">Charts unavailable</div>
-              )}
+          {isLoadingRecordings ? (
+            <div className="text-center py-8">
+              <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p className="text-gray-300 text-sm">Loading debate data...</p>
             </div>
-            <div className="space-y-4">
-              {Object.entries(analyticsData.debateTypes).map(([type, count]) => (
-                <div key={type} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-4 h-4 rounded-full ${
-                      type === '1-on-1' ? 'bg-purple-500' :
-                      type === 'Chat' ? 'bg-cyan-500' :
-                      type === 'AI' ? 'bg-green-500' : 'bg-pink-500'
-                    }`}></div>
-                    <span className="text-white font-medium">{type} Debates</span>
+          ) : debateRecordings.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="h-64 flex items-center justify-center">
+                <MemoizedChart data={chartData} isReady={chartsReady} />
+              </div>
+              <div className="space-y-4">
+                {Object.entries(analyticsData.debateTypes).map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-4 h-4 rounded-full ${
+                        type === '1-on-1' ? 'bg-purple-500' :
+                        type === 'Debate with AI' ? 'bg-cyan-500' :
+                        type === 'Team' ? 'bg-green-500' : 'bg-pink-500'
+                      }`}></div>
+                      <span className="text-white font-medium">{type}</span>
+                    </div>
+                    <span className="text-white font-bold">{count}</span>
                   </div>
-                  <span className="text-white font-bold">{count}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-6xl mb-4">📊</div>
+              <h3 className="text-xl font-bold text-white mb-2">No Debate Data</h3>
+              <p className="text-gray-300 text-sm">Complete debates to see distribution chart</p>
+            </div>
+          )}
         </div>
 
-        {/* Performance Analytics */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
-          <h2 className="text-2xl font-bold text-white mb-4">📈 Performance Analytics</h2>
+        {/* Performance Analytics - Only show when recordings exist */}
+        {debateRecordings.length > 0 && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
+            <h2 className="text-2xl font-bold text-white mb-4">📈 Performance Analytics</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <h3 className="text-lg font-semibold text-white mb-3">Score Trends</h3>
@@ -845,6 +1090,7 @@ const Debates: React.FC = () => {
             </div>
           </div>
         </div>
+        )}
 
         {/* 1-on-1 Debate Insights */}
         {analyticsData.oneOnOneMetrics.totalRounds > 0 && (
@@ -874,7 +1120,7 @@ const Debates: React.FC = () => {
               <ul className="text-gray-300 text-sm space-y-1">
                 <li>• You've completed {analyticsData.oneOnOneMetrics.totalRounds} rounds across {analyticsData.debateTypes['1-on-1']} debates</li>
                 <li>• Average round score: {analyticsData.oneOnOneMetrics.averageRoundScore} points</li>
-                <li>• {analyticsData.oneOnOneMetrics.completionRate}% of debates completed all 4 rounds</li>
+                <li>• {analyticsData.oneOnOneMetrics.completionRate}% of debates completed both rounds</li>
                 <li>• Your best performance: {analyticsData.oneOnOneMetrics.topScore} points</li>
                 <li>• Improvement trend: +{analyticsData.oneOnOneMetrics.improvementTrend}% over time</li>
               </ul>
@@ -944,36 +1190,38 @@ const Debates: React.FC = () => {
           </div>
         )}
 
-        {/* Recent Activity Summary */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
-          <h2 className="text-2xl font-bold text-white mb-4">📋 Recent Activity Summary</h2>
+        {/* Recent Activity Summary - Only show when recordings exist */}
+        {debateRecordings.length > 0 && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-6">
+            <h2 className="text-2xl font-bold text-white mb-4">📋 Recent Activity Summary</h2>
           <div className="space-y-3">
-            {liveDebates.slice(0, 5).map((debate, index) => (
+            {liveDebates.slice(0, 5).map((recording, index) => (
               <div key={index} className="flex items-center justify-between bg-white/5 rounded-lg p-4">
                 <div className="flex items-center space-x-4">
                   <div className={`w-3 h-3 rounded-full ${
-                    debate.debateStyle === '1-on-1' ? 'bg-purple-500' :
-                    debate.debateStyle === 'chat' ? 'bg-cyan-500' :
-                    debate.debateStyle === 'ai' ? 'bg-green-500' : 'bg-pink-500'
+                    recording.debate_style === '1-on-1' ? 'bg-purple-500' :
+                    recording.debate_style === 'ai' ? 'bg-cyan-500' :
+                    recording.debate_style === 'team' ? 'bg-green-500' : 'bg-pink-500'
                   }`}></div>
                   <div>
-                    <div className="text-white font-medium">{debate.topic}</div>
+                    <div className="text-white font-medium">{recording.topic}</div>
                     <div className="text-gray-400 text-sm">
-                      {debate.debateStyle} • {debate.sideSelection} • {new Date(debate.createdAt).toLocaleDateString()}
+                      {recording.debate_style} • {new Date(recording.created_at).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-white font-bold">{analyticsData.performanceScores[index]?.proScore || 'N/A'}</div>
+                  <div className="text-white font-bold">{recording.user_score || 'N/A'}</div>
                   <div className="text-gray-400 text-xs">Score</div>
                 </div>
               </div>
             ))}
           </div>
         </div>
+        )}
 
         {/* Recording list for deep dive */}
-        <DebateRecordingsPanel liveDebates={liveDebates} />
+        {debateRecordings.length > 0 && <DebateRecordingsPanel liveDebates={liveDebates} />}
       </div>
     );
   }
@@ -1167,6 +1415,19 @@ const Debates: React.FC = () => {
           )}
         </div>
       </header>
+
+      {/* Back to Dashboard Button */}
+      <div className="px-16 py-2">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 border border-white/30 hover:border-white/50 shadow-md hover:shadow-lg transform hover:scale-105"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </button>
+      </div>
 
       <div className="flex justify-center pt-8 px-4">
         <div className="flex gap-4 bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-white/50 p-2">

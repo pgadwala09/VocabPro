@@ -73,43 +73,73 @@ async function firecrawlGet(path: string, params: Record<string, any>) {
 }
 
 export async function firecrawlSearch(params: FirecrawlSearchParams): Promise<FirecrawlSearchResult[]> {
-  let json = await firecrawlFetch('/v1/search', {
-    query: params.q,
-    limit: params.limit ?? 10,
-    page: params.page ?? 1,
-  });
-  if (!json) {
-    // Fallback to GET variant if POST is not supported on the account
-    json = await firecrawlGet('/v1/search', {
-      q: params.q,
-      limit: params.limit ?? 10,
-      page: params.page ?? 1,
+  const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:3003';
+  
+  try {
+    const res = await fetch(`${apiUrl}/api/proxy/firecrawl`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: params.q,
+        limit: params.limit ?? 10,
+      }),
     });
+    
+    if (!res.ok) {
+      console.warn('Firecrawl proxy request failed:', res.status);
+      return [];
+    }
+    
+    const json = await res.json();
+    const items: any[] = json.results || [];
+    return items.map((r: any) => ({
+      title: r.title || r.meta_title,
+      url: r.url || r.link,
+      description: r.description || r.snippet,
+      source: r.source,
+    })).filter((r: any) => r.url);
+  } catch (error) {
+    console.error('Firecrawl search error:', error);
+    return [];
   }
-  if (!json) return [];
-  const items: any[] = json.results || json.data || [];
-  return items.map((r: any) => ({
-    title: r.title || r.meta_title,
-    url: r.url || r.link,
-    description: r.description || r.snippet,
-    source: r.source,
-  })).filter((r: any) => r.url);
 }
 
 export async function firecrawlScrape(options: FirecrawlScrapeOptions): Promise<FirecrawlScrapeResponse | null> {
   const { url, formats = ['markdown', 'links'] } = options;
-  const json = await firecrawlFetch('/v1/scrape', {
-    url,
-    formats,
-  });
-  if (!json) return null;
-  return {
-    markdown: json.markdown,
-    html: json.html,
-    raw: json.raw,
-    links: json.links,
-    meta: json.meta,
-  } as FirecrawlScrapeResponse;
+  
+  const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:3003';
+  
+  try {
+    const res = await fetch(`${apiUrl}/api/proxy/firecrawl/scrape`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        formats,
+      }),
+    });
+    
+    if (!res.ok) {
+      console.warn('Firecrawl scrape proxy request failed:', res.status);
+      return null;
+    }
+    
+    const json = await res.json();
+    return {
+      markdown: json.markdown,
+      html: json.html,
+      raw: json.raw,
+      links: json.links,
+      meta: json.meta,
+    } as FirecrawlScrapeResponse;
+  } catch (error) {
+    console.error('Firecrawl scrape error:', error);
+    return null;
+  }
 }
 
 export async function firecrawlCrawl(startUrl: string, limit = 10) {
