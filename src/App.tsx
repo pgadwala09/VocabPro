@@ -23,16 +23,7 @@ import PronunciationPractice from './components/PronunciationPractice';
 import JamSessions from './components/JamSessions';
 import Debates from './components/Debates';
 import DebateTournament from './components/DebateTournament';
-import { IntegrationTest } from './components/IntegrationTest';
-import { SignupDebug } from './components/SignupDebug';
-import { NetworkTest } from './components/NetworkTest';
-import MediaRecorderTest from './components/MediaRecorderTest';
-import PeerTest from './components/PeerTest';
-import ChartsDemo from './components/ChartsDemo';
 import LiveDebatesStreamlit from './components/LiveDebatesStreamlit';
-import TTSTest from './components/TTSTest';
-import RecordingTest from './components/RecordingTest';
-import DebateDemo from './components/DebateDemo';
 
 export interface LibraryItem {
   name: string;
@@ -188,19 +179,11 @@ function App() {
               <Route path="/mystery-sound-box" element={<MysterySoundBox />} />
               <Route path="/sound-safari" element={<SoundSafari />} />
               <Route path="/flashcards-trainer" element={<FlashcardTrainer />} />
+              <Route path="/flashcards" element={<Flashcards />} />
               <Route path="/dictation-quiz" element={<DictationQuiz />} />
               <Route path="/debates" element={user ? <Debates /> : <Navigate to="/login" />} />
               <Route path="/live-debates" element={<LiveDebatesStreamlit />} />
               <Route path="/debate-tournament" element={user ? <DebateTournament /> : <Navigate to="/login" />} />
-              <Route path="/test-integrations" element={<IntegrationTest />} />
-              <Route path="/signup-debug" element={<SignupDebug />} />
-              <Route path="/network-test" element={<NetworkTest />} />
-              <Route path="/mediarecorder-test" element={<MediaRecorderTest />} />
-              <Route path="/peer-test" element={<PeerTest />} />
-              <Route path="/charts-demo" element={<ChartsDemo />} />
-              <Route path="/tts-test" element={<TTSTest />} />
-              <Route path="/recording-test" element={<RecordingTest />} />
-              <Route path="/debate-demo" element={<DebateDemo />} />
               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>

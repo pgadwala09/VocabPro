@@ -15,36 +15,32 @@ export type SerpOrganicResult = {
 };
 
 export async function serpSearch(params: SerpSearchParams): Promise<SerpOrganicResult[]> {
-  const apiKey = (import.meta as any).env.VITE_SERPAPI_KEY as string | undefined;
-  if (!apiKey) {
-    console.warn('VITE_SERPAPI_KEY is not set. serpSearch will return empty results.');
-    return [];
-  }
-
-  const query = new URLSearchParams({
-    engine: 'google',
-    api_key: apiKey,
-    q: params.q,
-    ...(params.location ? { location: params.location } : {}),
-    ...(params.gl ? { gl: params.gl } : {}),
-    ...(params.hl ? { hl: params.hl } : {}),
-    ...(params.num ? { num: String(params.num) } : {}),
-  });
-
-  const url = `https://serpapi.com/search.json?${query.toString()}`;
+  const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:3003';
+  
   try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
+    const res = await fetch(`${apiUrl}/api/proxy/serpapi`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: params.q,
+        location: params.location,
+        num: params.num,
+        gl: params.gl,
+        hl: params.hl,
+      }),
+    });
+    
+    if (!res.ok) {
+      console.warn('SerpAPI proxy request failed:', res.status);
+      return [];
+    }
+    
     const json = await res.json();
-    const organic: any[] = json.organic_results || [];
-    return organic.map((r, idx) => ({
-      position: r.position ?? idx + 1,
-      title: r.title,
-      link: r.link,
-      snippet: r.snippet,
-      source: r.source,
-    }));
-  } catch {
+    return json.results || [];
+  } catch (error) {
+    console.error('SerpAPI search error:', error);
     return [];
   }
 }

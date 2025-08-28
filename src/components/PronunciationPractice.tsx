@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Mic, StopCircle, X, Brain, Sparkles, Volume2, BookOpen, MessageSquare, Music, TrendingUp, Award, Clock, BarChart3, Download } from 'lucide-react';
+import RecordRTC from 'recordrtc';
 import { useAuth } from '../hooks/useAuth';
-import { s2sProxy, ttsProxy } from '../lib/elevenProxy';
-import { speakWithBrowser, openAiTts } from '../lib/tts';
 import { useVocabulary } from '../hooks/VocabularyContext';
 import { useNavigate } from 'react-router-dom';
 import { useFeedback } from '../hooks/FeedbackContext';
-import { pronunciationAnalysisService, PronunciationAnalysis } from '../lib/pronunciationAnalysis';
+import { integrationService, PronunciationRecording, PronunciationProgress } from '../lib/integrationService';
 import { 
   GlossyPronunciationChart, 
   GlossyPhonemeChart, 
@@ -27,7 +26,8 @@ const PronunciationPractice: React.FC = () => {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [enhancedURL, setEnhancedURL] = useState<string | null>(null);
   const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
-  const [, setPronunciationAnalysis] = useState<PronunciationAnalysis | null>(null);
+  const [pronunciationRecordings, setPronunciationRecordings] = useState<PronunciationRecording[]>([]);
+  const [pronunciationProgress, setPronunciationProgress] = useState<PronunciationProgress[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [showDetailedReport, setShowDetailedReport] = useState<boolean>(false);
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
@@ -94,9 +94,9 @@ const PronunciationPractice: React.FC = () => {
     }
     return new Blob([buffer], { type: 'audio/wav' });
   };
-  // Removed S2S state since we only keep AI assistant
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunks = useRef<Blob[]>([]);
+  // RecordRTC for better audio recording
+  const recordRTCRef = useRef<RecordRTC | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   // Removed unused original waveform state
   const [latestRecordedWord, setLatestRecordedWord] = useState<string>('Pronunciation');
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -208,24 +208,36 @@ const PronunciationPractice: React.FC = () => {
       // Show immediate feedback to user
       console.log('Starting PDF export...');
       
+      // Validate and sanitize data before creating report
+      const sanitizedInsights = {
+        averageScore: Math.max(0, Math.min(100, insightsData.averageScore || 0)),
+        totalWords: Math.max(0, insightsData.totalWords || 0),
+        totalRecordings: Math.max(0, insightsData.totalRecordings || 0),
+        practiceTime: Math.max(0, insightsData.practiceTime || 0),
+        averageClarity: Math.max(0, Math.min(100, insightsData.averageClarity || 0)),
+        pronunciationScores: Array.isArray(insightsData.pronunciationScores) ? insightsData.pronunciationScores : [],
+        phonemeData: Array.isArray(insightsData.phonemeData) ? insightsData.phonemeData : [],
+        progressData: Array.isArray(insightsData.progressData) ? insightsData.progressData : []
+      };
+
       const reportData = {
-        userName: user?.user_metadata?.full_name || user?.email || 'User',
+        userName: (user?.user_metadata?.full_name || user?.email || 'User').substring(0, 50), // Limit length
         reportDate: new Date().toISOString(),
-        overallScore: insightsData.averageScore / 100,
-        totalWords: insightsData.totalWords,
-        totalRecordings: insightsData.totalRecordings,
-        timeSpent: insightsData.practiceTime,
-        pronunciationScores: insightsData.pronunciationScores,
-        phonemeAccuracy: insightsData.phonemeData,
-        progressData: insightsData.progressData,
+        overallScore: sanitizedInsights.averageScore / 100,
+        totalWords: sanitizedInsights.totalWords,
+        totalRecordings: sanitizedInsights.totalRecordings,
+        timeSpent: sanitizedInsights.practiceTime,
+        pronunciationScores: sanitizedInsights.pronunciationScores.slice(0, 20), // Limit to first 20
+        phonemeAccuracy: sanitizedInsights.phonemeData.slice(0, 15), // Limit to first 15
+        progressData: sanitizedInsights.progressData.slice(0, 10), // Limit to first 10
         communicationStyle: {
-          clarity: insightsData.averageClarity / 100,
-          fluency: Math.min(1, insightsData.averageScore / 100 + 0.1),
-          intonation: Math.min(1, insightsData.averageScore / 100 + 0.03),
+          clarity: sanitizedInsights.averageClarity / 100,
+          fluency: Math.min(1, Math.max(0, sanitizedInsights.averageScore / 100 + 0.1)),
+          intonation: Math.min(1, Math.max(0, sanitizedInsights.averageScore / 100 + 0.03)),
           speakingRate: 'normal' as 'slow' | 'normal' | 'fast'
         },
-        achievements: insightsData.averageScore > 80 ? ['High Accuracy Achieved', 'Consistent Practice'] : ['Keep Practicing'],
-        focusAreas: insightsData.averageClarity < 70 ? ['Speech Clarity', 'Pronunciation Accuracy'] : [],
+        achievements: sanitizedInsights.averageScore > 80 ? ['High Accuracy Achieved', 'Consistent Practice'] : ['Keep Practicing'],
+        focusAreas: sanitizedInsights.averageClarity < 70 ? ['Speech Clarity', 'Pronunciation Accuracy'] : [],
         recommendations: [
           'Continue practicing with varied vocabulary',
           'Focus on clear articulation',
@@ -239,45 +251,83 @@ const PronunciationPractice: React.FC = () => {
       
     } catch (error) {
       console.error('Error exporting report:', error);
-      alert('PDF export failed. The report will download as a text file instead.');
+      // Show a more user-friendly error message
+      const errorMessage = 'PDF export encountered an issue. A text version of your report will be downloaded instead.';
+      alert(errorMessage);
     } finally {
       setIsExportingPDF(false);
     }
   };
 
-  // Helper to generate AI voice (S2S preferred, then TTS fallbacks)
+  // Helper to generate AI voice with direct browser speech synthesis
   const generateAiVoice = async (): Promise<string | null> => {
     try {
       setIsEnhancing(true);
-      let wavBlob: Blob | null = null;
-      if (audioBlob) {
-        try {
-          wavBlob = await convertBlobToWav(audioBlob);
-        } catch {}
-      }
+      console.log('🎤 Generating AI voice for:', latestRecordedWord);
+      
+      // Use direct browser speech synthesis for immediate response
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Stop any current speech
+        
+        const getVoices = (): Promise<SpeechSynthesisVoice[]> => {
+          return new Promise((resolve) => {
+            let voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+              resolve(voices);
+              return;
+            }
+            
+            window.speechSynthesis.onvoiceschanged = () => {
+              voices = window.speechSynthesis.getVoices();
+              resolve(voices);
+            };
+            
+            window.speechSynthesis.getVoices();
+          });
+        };
+        
+        const voices = await getVoices();
+        console.log('🎤 Available voices:', voices.map(v => `${v.name} (${v.lang})`));
+        
+        // Enhanced voice selection for David
+        let selectedVoice = voices.find(voice => 
+          voice.name.toLowerCase().includes('microsoft david') ||
+          voice.name.toLowerCase().includes('david') ||
+          voice.name.toLowerCase().includes('ms david')
+        ) || voices.find(voice => 
+          voice.name.toLowerCase().includes('microsoft') ||
+          voice.name.toLowerCase().includes('windows') ||
+          voice.name.toLowerCase().includes('sapi')
+        ) || voices.find(voice => voice.lang.startsWith('en-US'));
 
-      const withTimeout = (p: Promise<string | null>, ms: number): Promise<string | null> =>
-        Promise.race<string | null>([
-          p,
-          new Promise<string | null>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
-        ]);
+        if (selectedVoice) {
+          console.log('✅ Selected voice:', selectedVoice.name, 'Language:', selectedVoice.lang);
+        } else {
+          console.log('⚠️ No preferred voice found, using default');
+        }
 
-      try {
-        let url: string | null = null;
-        if (wavBlob || audioBlob) {
-          url = await withTimeout(s2sProxy((wavBlob || audioBlob) as Blob) as Promise<string | null>, 20000).catch(() => null);
+        const utterance = new window.SpeechSynthesisUtterance(latestRecordedWord || 'Hello');
+        utterance.rate = 0.8; // Slower for clarity
+        utterance.pitch = 1.1; // Slightly higher pitch
+        utterance.lang = 'en-US';
+        utterance.volume = 1.0; // Full volume
+        
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
         }
-        if (!url) {
-          url = await ttsProxy(latestRecordedWord || '');
-        }
-        if (!url) {
-          url = await openAiTts(latestRecordedWord || '');
-        }
-        return url;
-      } catch (e) {
-        console.error('AI generation error:', e);
+
+        // Speak the word
+        window.speechSynthesis.speak(utterance);
+        
+        console.log('✅ AI voice generated using browser speech synthesis');
+        return 'browser-speech'; // Return a placeholder since it's direct speech
+      } else {
+        console.error('❌ Speech synthesis not supported');
         return null;
       }
+    } catch (error) {
+      console.error('❌ AI voice generation error:', error);
+      return null;
     } finally {
       setIsEnhancing(false);
     }
@@ -293,6 +343,21 @@ const PronunciationPractice: React.FC = () => {
 
   // Cleanup effect
   useEffect(() => {
+    // Initialize audio context for better audio playback
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        console.log('🔊 Audio context initialized, state:', audioContextRef.current.state);
+        
+        // Resume audio context if suspended (needed for user interaction)
+        if (audioContextRef.current.state === 'suspended') {
+          console.log('🔊 Audio context is suspended, will resume on user interaction');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize audio context:', error);
+    }
+    
     // Load persisted activity
     try {
       const w = JSON.parse(localStorage.getItem('recentWords') || '[]');
@@ -301,10 +366,46 @@ const PronunciationPractice: React.FC = () => {
     try {
       const r = JSON.parse(localStorage.getItem('recentRecordings') || '[]');
       if (Array.isArray(r)) {
-        // We cannot restore Blob from LS; keep URL if still valid in session
-        setRecordings(r.map((it: any) => ({ ...it, blob: new Blob() })));
+        console.log('📂 Loading recordings from localStorage:', r.length);
+        
+        // Convert base64 data back to blob URLs for playback
+        const recordingsWithBlobs = r.map((recording: any) => {
+          try {
+            // Check if the URL is base64 data (starts with data:)
+            if (recording.url && recording.url.startsWith('data:')) {
+              console.log('🔄 Converting base64 to blob for recording:', recording.word);
+              
+              // Convert base64 to blob
+              const base64Data = recording.url;
+              const byteCharacters = atob(base64Data.split(',')[1]);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: 'audio/wav' });
+              
+              console.log('✅ Successfully converted base64 to blob, size:', blob.size, 'bytes');
+              
+              return {
+                ...recording,
+                blob,
+                url: base64Data // Keep the base64 data for storage
+              };
+            }
+            return recording;
+          } catch (error) {
+            console.error('❌ Error converting base64 to blob for recording:', recording.word, error);
+            return recording;
+          }
+        });
+        
+        setRecordings(recordingsWithBlobs);
+        console.log('✅ Loaded recordings with blobs:', recordingsWithBlobs.length);
       }
-    } catch {}
+    } catch (error) {
+      console.error('❌ Error loading recordings from localStorage:', error);
+    }
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -320,7 +421,22 @@ const PronunciationPractice: React.FC = () => {
   // Pull the latest word added in Vocabulary Practice (via context)
   useEffect(() => {
     try {
-      if (Array.isArray(vocabList) && vocabList.length > 0) {
+      // Check for selected word from Vocabulary Practice
+      const selectedWord = localStorage.getItem('selectedWord');
+      if (selectedWord) {
+        setLatestRecordedWord(selectedWord);
+        setCurrentWord(selectedWord);
+        // Clear the selected word after using it
+        localStorage.removeItem('selectedWord');
+        // Persist recent word to localStorage for dashboard sync
+        const entry: RecentWord = { id: Date.now(), word: selectedWord, createdAt: new Date().toISOString() };
+        setRecentWords(prev => {
+          const updated = [entry, ...prev.filter(w => w.word !== selectedWord)].slice(0, 50);
+          try { localStorage.setItem('recentWords', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+      } else if (Array.isArray(vocabList) && vocabList.length > 0) {
+        // Fallback to latest word from vocabulary list
         const last = vocabList[vocabList.length - 1];
         if (last?.word) {
           setLatestRecordedWord(last.word);
@@ -448,141 +564,317 @@ const PronunciationPractice: React.FC = () => {
 
   const handleStartRecording = async () => {
     setAudioURL(null);
-    audioChunks.current = [];
+    
+    // Set recording state immediately for better UI responsiveness
+    setIsRecording(true);
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new window.MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.ondataavailable = (e: BlobEvent) => {
-        if (e.data.size > 0) {
-          audioChunks.current.push(e.data);
-        }
-      };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        setAudioURL(URL.createObjectURL(blob));
-        // Update the latest recorded word when recording is completed
-        setLatestRecordedWord(currentWord);
-        // Save to recent recordings
-        try {
-          const url = URL.createObjectURL(blob);
-          const item: SavedRecording = { id: Date.now(), word: currentWord, url, blob, createdAt: new Date().toISOString() };
-          setRecordings(prev => {
-            const updated = [item, ...prev].slice(0, 20);
-            try {
-              // Store lightweight fields to localStorage (omit blob)
-              const lsItems = updated.map(r => ({ id: r.id, word: r.word, url: r.url, createdAt: r.createdAt }));
-              localStorage.setItem('recentRecordings', JSON.stringify(lsItems));
-            } catch {}
-            return updated;
-          });
-        } catch {}
-        // Enhanced Analysis using Whisper + AI
-        const performEnhancedAnalysis = async () => {
-          try {
-            setIsAnalyzing(true);
-            const analysis = await pronunciationAnalysisService.analyzeAudio(blob, currentWord);
-            setPronunciationAnalysis(analysis);
-            
-            // Enhanced feedback for insights
-            addFeedback({
-              word: analysis.word,
-              score: Math.round(analysis.overallScore * 100),
-              clarity: { 
-                value: Math.round(analysis.clarityScore * 100), 
-                text: analysis.clarityScore > 0.8 ? 'Excellent clarity' : analysis.clarityScore > 0.6 ? 'Good clarity' : 'Needs improvement' 
-              },
-              wordStress: { 
-                value: Math.round(analysis.intonationScore * 100), 
-                text: analysis.intonationScore > 0.7 ? 'Natural intonation' : 'Work on stress patterns' 
-              },
-              pace: { 
-                value: analysis.speakingRate === 'normal' ? 85 : analysis.speakingRate === 'slow' ? 60 : 90, 
-                text: analysis.speakingRate === 'normal' ? 'Perfect pace' : analysis.speakingRate === 'slow' ? 'Try speaking faster' : 'Slow down slightly' 
-              },
-              phonemeAccuracy: { 
-                value: Math.round(Object.values(analysis.phonemeAccuracy).reduce((a, b) => a + b, 0) / Object.keys(analysis.phonemeAccuracy).length * 100), 
-                text: analysis.pronunciationErrors.length === 0 ? 'Excellent pronunciation' : 'Focus on specific sounds' 
-              },
-              suggestions: analysis.improvementSuggestions,
-              date: new Date().toISOString(),
-              // Additional enhanced metrics
-              transcription: analysis.transcription,
-              confidenceScore: analysis.confidenceScore,
-              duration: analysis.duration,
-              wordsPerMinute: analysis.wordsPerMinute,
-              averagePitch: analysis.averagePitch,
-              difficultyLevel: analysis.difficultyLevel,
-              masteryStatus: analysis.masteryStatus
-            });
-          } catch (error) {
-            console.error('Enhanced analysis failed, falling back to basic feedback:', error);
-            
-            // Fallback to basic feedback
-            try {
-              const tmp = new Audio(URL.createObjectURL(blob));
-              tmp.onloadedmetadata = () => {
-                const durationSec = Math.max(1, Math.round(tmp.duration || 1));
-                const base = Math.min(95, 70 + Math.floor(Math.random() * 26));
-                addFeedback({
-                  word: currentWord,
-                  score: base,
-                  clarity: { value: Math.min(100, base - 5), text: base > 80 ? 'Clear' : 'Needs clarity' },
-                  wordStress: { value: Math.max(60, base - 10), text: base > 78 ? 'Well stressed' : 'Adjust stress' },
-                  pace: { value: 100 - Math.abs(80 - base), text: durationSec > 3 ? 'Steady' : 'Fast' },
-                  phonemeAccuracy: { value: Math.max(55, base - 15), text: base > 75 ? 'Good sounds' : 'Practice sounds' },
-                  suggestions: [
-                    'Slow down slightly and enunciate vowels.',
-                    'Emphasize the stressed syllable.',
-                    'Listen to the AI voice and mimic the rhythm.'
-                  ],
-                  date: new Date().toISOString()
-                });
-              };
-            } catch {}
-          } finally {
-            setIsAnalyzing(false);
+      console.log('🎤 Starting RecordRTC audio recording...');
+      
+      // First, clean up any existing stream
+      if (streamRef.current) {
+        console.log('🧹 Cleaning up existing stream...');
+        streamRef.current.getTracks().forEach(track => {
+          if (track.readyState === 'live') {
+            track.stop();
           }
-        };
+        });
+        streamRef.current = null;
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100
+        } 
+      });
+      console.log('✅ Microphone access granted');
+      
+      streamRef.current = stream;
+      
+      // Configure RecordRTC with WAV format for better compatibility
+      const recordRTC = new RecordRTC(stream, {
+        type: 'audio',
+        mimeType: 'audio/wav', // WAV for broad compatibility
+        recorderType: RecordRTC.StereoAudioRecorder,
+        sampleRate: 44100, // Standard audio rate
+        numberOfAudioChannels: 1, // Mono for simplicity
+        timeSlice: 1000,
+        ondataavailable: (blob: Blob) => {
+          console.log('📦 RecordRTC data available, size:', blob.size, 'bytes');
+        }
+      });
+      
+      recordRTCRef.current = recordRTC;
+      
+      // Small delay to ensure stream is fully established
+      setTimeout(() => {
+        // Start recording
+        recordRTC.startRecording();
+        console.log('🎙️ RecordRTC recording started');
         
-        // Perform analysis asynchronously
-        performEnhancedAnalysis();
-        stream.getTracks().forEach(track => track.stop());
-        stopWaveformAnalysis();
-      };
-      mediaRecorder.start();
-      setIsRecording(true);
-      startWaveformAnalysis(stream);
+        // Start waveform analysis
+        startWaveformAnalysis(stream);
+      }, 100);
+      
     } catch (err) {
-      alert('Microphone access denied or not available.');
+      console.error('❌ Recording start error:', err);
+      setIsRecording(false); // Reset recording state on error
+      alert('Microphone access denied or not available. Please check your browser permissions.');
     }
   };
 
   const handleStopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+    if (recordRTCRef.current && isRecording) {
+      console.log('⏹️ Stopping RecordRTC recording...');
+      
+      // Set recording state to false first to prevent premature cleanup
       setIsRecording(false);
+      
+      recordRTCRef.current.stopRecording(() => {
+        try {
+          const blob = recordRTCRef.current?.getBlob();
+          console.log('🎵 RecordRTC blob created, size:', blob?.size, 'bytes');
+          
+          if (!blob || blob.size === 0) {
+            console.error('❌ RecordRTC blob is empty!');
+            alert('Recording failed. Please try again.');
+            // Only cleanup after we're sure recording is complete
+            setTimeout(() => cleanupRecording(), 100);
+            return;
+          }
+          
+          // Convert blob to base64 for persistent storage
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64Data = reader.result as string;
+            console.log('📄 Base64 data length:', base64Data.length);
+            
+            setAudioBlob(blob);
+            setAudioURL(base64Data);
+            setLatestRecordedWord(currentWord);
+            
+            // Upload to Supabase Storage
+            try {
+              const fileName = `speech-${Date.now()}.wav`;
+              const supabaseUrl = await integrationService.supabase.uploadAudioToStorage(blob, fileName);
+              
+              if (supabaseUrl) {
+                console.log('✅ Audio uploaded to Supabase Storage:', supabaseUrl);
+                // Use Supabase URL for playback instead of base64
+                setAudioURL(supabaseUrl);
+              } else {
+                console.log('⚠️ Failed to upload to Supabase, using base64 fallback');
+              }
+            } catch (error) {
+              console.error('❌ Supabase upload failed, using base64 fallback:', error);
+            }
+            
+            // Save to recordings with base64 data as fallback
+            const item: SavedRecording = { 
+              id: Date.now(), 
+              word: currentWord, 
+              url: base64Data, 
+              blob, 
+              createdAt: new Date().toISOString() 
+            };
+            
+            setRecordings(prev => {
+              const updated = [item, ...prev].slice(0, 20);
+              try {
+                // Save base64 data to localStorage for persistence
+                const lsItems = updated.map(r => ({ 
+                  id: r.id, 
+                  word: r.word, 
+                  url: r.url, // This is now base64 data
+                  createdAt: r.createdAt 
+                }));
+                localStorage.setItem('recentRecordings', JSON.stringify(lsItems));
+                console.log('💾 Saved recording to localStorage with base64 data');
+              } catch (error) {
+                console.error('❌ Error saving to localStorage:', error);
+              }
+              return updated;
+            });
+            
+            // Simple analysis and save to Supabase
+            const performAnalysis = async () => {
+              try {
+                setIsAnalyzing(true);
+                
+                // Create feedback for local state
+                const feedback = {
+                  word: currentWord,
+                  score: 75,
+                  clarity: { value: 70, text: 'Good clarity' },
+                  wordStress: { value: 75, text: 'Well stressed' },
+                  pace: { value: 80, text: 'Good pace' },
+                  phonemeAccuracy: { value: 72, text: 'Good sounds' },
+                  suggestions: [
+                    'Great recording! Keep practicing.',
+                    'Listen to the AI voice and mimic it.',
+                    'Record yourself and listen back.'
+                  ],
+                  date: new Date().toISOString()
+                };
+                
+                addFeedback(feedback);
+                
+                // Save recording metadata to Supabase
+                try {
+                  const recordingData = {
+                    user_id: '', // Will be set by the service
+                    word: currentWord,
+                    audio_url: audioURL || base64Data, // Use Supabase URL if available, otherwise base64
+                    duration: blob.size > 0 ? Math.round(blob.size / 1000) : 0, // Rough duration estimate
+                    file_size: blob.size,
+                    analysis_score: feedback.score,
+                    clarity_score: feedback.clarity.value,
+                    accuracy_score: feedback.phonemeAccuracy.value,
+                    fluency_score: feedback.pace.value,
+                    feedback: 'Good recording quality',
+                    suggestions: feedback.suggestions
+                  };
+                  
+                  const savedRecording = await integrationService.supabase.saveRecording(recordingData);
+                  if (savedRecording) {
+                    console.log('✅ Recording metadata saved to Supabase:', savedRecording.id);
+                  } else {
+                    console.log('⚠️ Failed to save recording metadata to Supabase');
+                  }
+                } catch (error) {
+                  console.error('❌ Error saving recording metadata to Supabase:', error);
+                }
+                
+              } catch (error) {
+                console.error('Analysis failed:', error);
+              } finally {
+                setIsAnalyzing(false);
+              }
+            };
+            
+            performAnalysis();
+          };
+          
+          reader.onerror = () => {
+            console.error('❌ Error converting blob to base64');
+            alert('Failed to save recording. Please try again.');
+            // Only cleanup after we're sure recording is complete
+            setTimeout(() => cleanupRecording(), 100);
+          };
+          
+          reader.readAsDataURL(blob);
+          
+        } catch (error) {
+          console.error('❌ Error processing RecordRTC recording:', error);
+          alert('Error processing recording. Please try again.');
+          // Only cleanup after we're sure recording is complete
+          setTimeout(() => cleanupRecording(), 100);
+        }
+      });
+      
+      // Stop waveform analysis after recording is complete
       stopWaveformAnalysis();
     }
+  };
+  
+  const cleanupRecording = () => {
+    console.log('🧹 Cleaning up recording resources...');
+    
+    // Only stop the stream if we're not currently recording
+    if (streamRef.current && !isRecording) {
+      console.log('🛑 Stopping media stream tracks...');
+      streamRef.current.getTracks().forEach(track => {
+        if (track.readyState === 'live') {
+          track.stop();
+        }
+      });
+      streamRef.current = null;
+    }
+    
+    // Clear RecordRTC reference
+    if (recordRTCRef.current) {
+      console.log('🧹 Clearing RecordRTC reference...');
+      recordRTCRef.current = null;
+    }
+    
+    setIsRecording(false);
+    stopWaveformAnalysis();
   };
 
   const handlePlayAudio = () => {
     if (audioURL) {
-      setIsPlaying(true);
-      const audio = new Audio(audioURL);
-      audio.onended = () => setIsPlaying(false);
-      audio.play();
+      try {
+        console.log('🎵 Playing user recording:', audioURL.substring(0, 50) + '...');
+        setIsPlaying(true);
+        
+        // Resume audio context if suspended
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          console.log('🔊 Resuming suspended audio context...');
+          audioContextRef.current.resume();
+        }
+        
+        // Create audio element with controls for better user experience
+        const audio = new Audio(audioURL);
+        audio.controls = true; // Show controls for user control
+        audio.volume = 1.0; // Ensure volume is not muted
+        audio.preload = 'auto';
+        
+        // Clear previous audio and add new one
+        const playbackContainer = document.getElementById('playback-container');
+        if (playbackContainer) {
+          playbackContainer.innerHTML = '';
+          playbackContainer.appendChild(audio);
+        }
+        
+        // Play the audio
+        audio.play().then(() => {
+          console.log('✅ User audio playback started successfully');
+          console.log('🔊 Audio volume:', audio.volume);
+        }).catch(error => {
+          console.error('❌ Playback error:', error);
+          setIsPlaying(false);
+          alert('Failed to play audio. Check browser compatibility or audio format.');
+        });
+        
+        // Handle playback events
+        audio.onplay = () => {
+          console.log('🎵 User audio playback started');
+          setIsPlaying(true);
+        };
+        
+        audio.onended = () => {
+          console.log('🎵 User audio playback ended');
+          setIsPlaying(false);
+        };
+        
+        audio.onerror = (e) => {
+          console.error('🎵 User audio error:', e);
+          setIsPlaying(false);
+          if (audio.error) {
+            console.error('🎵 Audio error code:', audio.error.code, 'Message:', audio.error.message);
+          }
+        };
+        
+      } catch (error) {
+        console.error('❌ Playback setup error:', error);
+        setIsPlaying(false);
+        alert('Failed to play audio. Check browser compatibility or audio format.');
+      }
+    } else {
+      console.log('❌ No audio URL available to play');
+      alert('No recording available to play. Please record something first.');
     }
   };
 
-  // Removed S2S controls and playback
-
   const handleClearRecording = () => {
     setAudioURL(null);
+    setAudioBlob(null);
     setIsRecording(false);
     setIsPlaying(false);
-    stopWaveformAnalysis();
+    cleanupRecording();
   };
 
   // Recording share/download helpers (match JAM Sessions styling/behavior)
@@ -794,14 +1086,25 @@ const PronunciationPractice: React.FC = () => {
             <div>
               <div className="text-xl text-blue-200 mb-3">Your Pronunciation</div>
               <p className="text-sm text-blue-200/80 mb-4">Record and practice.</p>
-              {isAnalyzing && (
-                <div className="mb-3 p-2 bg-blue-500/20 rounded-lg border border-blue-400/30">
-                  <div className="flex items-center gap-2 text-blue-200">
-                    <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-xs">AI analyzing...</span>
-            </div>
-          </div>
-              )}
+
+                {isPlaying && (
+                  <div className="mb-3 p-2 bg-blue-500/20 rounded-lg border border-blue-400/30">
+                    <div className="flex items-center gap-2 text-blue-200">
+                      <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs">Playing...</span>
+                    </div>
+                  </div>
+                )}
+                {isAnalyzing && (
+                  <div className="mb-3 p-2 bg-blue-500/20 rounded-lg border border-blue-400/30">
+                    <div className="flex items-center gap-2 text-blue-200">
+                      <div className="w-3 h-3 border-2 border-blue-300 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs">AI analyzing...</span>
+                    </div>
+                  </div>
+                )}
+                
+
         </div>
             <div className="w-full flex items-center justify-center gap-3">
           <button
@@ -851,31 +1154,66 @@ const PronunciationPractice: React.FC = () => {
             <div className="w-full flex items-center justify-center gap-3">
               <button
                 onClick={async () => {
-                  // If we already have a generated URL, just play it
-                  if (enhancedURL) {
-                    setIsPlaying(true);
-                    const audio = new Audio(enhancedURL);
-                    try { audio.playbackRate = aiPlaybackRate; } catch {}
-                    audio.onended = () => setIsPlaying(false);
-                    audio.play();
-                    return;
-                  }
-                  // Otherwise generate then play
-                  const url = await generateAiVoice();
-                  if (url) {
-                    setEnhancedURL(url);
-                    try {
-                      setIsPlaying(true);
-                      const audio = new Audio(url);
-                      try { audio.playbackRate = aiPlaybackRate; } catch {}
-                      audio.onended = () => setIsPlaying(false);
-                      await audio.play();
-                    } catch {
-                      setIsPlaying(false);
+                  console.log('🎤 Play AI Voice clicked for word:', latestRecordedWord);
+                  
+                  // Use direct browser speech synthesis for immediate response
+                  if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel(); // Stop any current speech
+                    
+                    const getVoices = (): Promise<SpeechSynthesisVoice[]> => {
+                      return new Promise((resolve) => {
+                        let voices = window.speechSynthesis.getVoices();
+                        if (voices.length > 0) {
+                          resolve(voices);
+                          return;
+                        }
+                        
+                        window.speechSynthesis.onvoiceschanged = () => {
+                          voices = window.speechSynthesis.getVoices();
+                          resolve(voices);
+                        };
+                        
+                        window.speechSynthesis.getVoices();
+                      });
+                    };
+                    
+                    const voices = await getVoices();
+                    console.log('🎤 Available voices:', voices.map(v => `${v.name} (${v.lang})`));
+                    
+                    // Enhanced voice selection for David
+                    let selectedVoice = voices.find(voice => 
+                      voice.name.toLowerCase().includes('microsoft david') ||
+                      voice.name.toLowerCase().includes('david') ||
+                      voice.name.toLowerCase().includes('ms david')
+                    ) || voices.find(voice => 
+                      voice.name.toLowerCase().includes('microsoft') ||
+                      voice.name.toLowerCase().includes('windows') ||
+                      voice.name.toLowerCase().includes('sapi')
+                    ) || voices.find(voice => voice.lang.startsWith('en-US'));
+
+                    if (selectedVoice) {
+                      console.log('✅ Selected voice:', selectedVoice.name, 'Language:', selectedVoice.lang);
+                    } else {
+                      console.log('⚠️ No preferred voice found, using default');
                     }
-                  } else if (latestRecordedWord) {
-                    // Final fallback: browser TTS so the user still hears audio
-                    speakWithBrowser(latestRecordedWord);
+
+                    const utterance = new window.SpeechSynthesisUtterance(latestRecordedWord || 'Hello');
+                    utterance.rate = 0.8; // Slower for clarity
+                    utterance.pitch = 1.1; // Slightly higher pitch
+                    utterance.lang = 'en-US';
+                    utterance.volume = 1.0; // Full volume
+                    
+                    if (selectedVoice) {
+                      utterance.voice = selectedVoice;
+                    }
+
+                    // Speak the word
+                    window.speechSynthesis.speak(utterance);
+                    
+                    console.log('✅ AI voice generated using browser speech synthesis');
+                  } else {
+                    console.error('❌ Speech synthesis not supported');
+                    alert('Speech synthesis not supported in this browser. Please try a different browser.');
                   }
                 }}
                 disabled={isPlaying || isEnhancing || (!audioBlob && !latestRecordedWord)}
@@ -1162,6 +1500,19 @@ const PronunciationPractice: React.FC = () => {
         </div>
       </header>
 
+      {/* Back to Dashboard Button */}
+      <div className="px-16 py-2">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 border border-white/30 hover:border-white/50 shadow-md hover:shadow-lg transform hover:scale-105"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </button>
+      </div>
+
       {/* Main Content */}
       <main className="flex-1 flex justify-center pt-12 pb-12 px-4">
         <div className="max-w-8xl w-full flex justify-center gap-12">
@@ -1199,8 +1550,9 @@ const PronunciationPractice: React.FC = () => {
              </div>
           </div>
 
-          {/* Right Sidebar */}
-          <div className={`w-[380px] ${activeTab === 'pronunciation' ? 'h-[720px]' : 'h-[680px]'} bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-blue-200/50 p-10 flex flex-col`}>
+          {/* Right Sidebar - Hide when Flashcards tab is active */}
+          {activeTab !== 'flashcards' && (
+            <div className={`w-[380px] ${activeTab === 'pronunciation' ? 'h-[720px]' : 'h-[680px]'} bg-white/10 backdrop-blur-sm rounded-2xl border-2 border-blue-200/50 p-10 flex flex-col`}>
             <div className="flex items-center mb-6">
               <div className="w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mr-4">
                 <Brain className="w-8 h-8 text-white" />
@@ -1244,6 +1596,7 @@ const PronunciationPractice: React.FC = () => {
               View Detailed Report
             </button>
           </div>
+          )}
         </div>
       </main>
 

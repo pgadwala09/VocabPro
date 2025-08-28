@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import OpenAI from 'openai';
 import fetch from 'node-fetch';
+import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -11,7 +12,13 @@ import turnEngine from './turn-engine.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-dotenv.config();
+// Load environment variables from parent directory (where .env is located)
+dotenv.config({ path: '../.env' });
+console.log('🔍 Environment variables loaded:');
+console.log('  - LINDY_AI_WEBHOOK_URL:', process.env.LINDY_AI_WEBHOOK_URL);
+console.log('  - N8N_WEBHOOK_URL:', process.env.N8N_WEBHOOK_URL);
+console.log('  - VITE_SERPAPI_KEY:', process.env.VITE_SERPAPI_KEY ? 'Set' : 'Not set');
+console.log('  - VITE_FIRECRAWL_API_KEY:', process.env.VITE_FIRECRAWL_API_KEY ? 'Set' : 'Not set');
 
 const app = express();
 const port = process.env.API_PORT || 3003;
@@ -26,7 +33,7 @@ const upload = multer({
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || ['http://localhost:5173', 'http://localhost:5175', 'http://localhost:5176'],
   credentials: true
 }));
 
@@ -45,9 +52,97 @@ app.get('/health', (req, res) => {
     services: {
       transcription: !!process.env.OPENAI_API_KEY,
       aiResponse: !!process.env.OPENAI_API_KEY,
-      tts: !!process.env.ELEVENLABS_API_KEY
+      tts: !!process.env.ELEVENLABS_API_KEY,
+      supabase: !!process.env.SUPABASE_URL,
+      googleAI: !!process.env.VITE_GOOGLE_AI_STUDIO_API_KEY
     }
   });
+});
+
+// ElevenLabs voices endpoint
+app.get('/api/elevenlabs/voices', async (req, res) => {
+  try {
+    const API_KEY = process.env.ELEVENLABS_API_KEY || process.env.VITE_ELEVENLABS_API_KEY;
+    if (!API_KEY) {
+      return res.status(401).json({ error: 'missing_api_key' });
+    }
+
+    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': API_KEY }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'failed_to_fetch_voices' });
+    }
+
+    const data = await response.json();
+    res.json({ voices: data.voices || [] });
+  } catch (error) {
+    console.error('ElevenLabs voices error:', error);
+    res.status(500).json({ error: 'proxy_error', message: error.message });
+  }
+});
+
+// ElevenLabs TTS endpoint
+app.post('/api/elevenlabs/tts', async (req, res) => {
+  try {
+    const API_KEY = process.env.ELEVENLABS_API_KEY || process.env.VITE_ELEVENLABS_API_KEY;
+    if (!API_KEY) {
+      return res.status(401).json({ error: 'missing_api_key' });
+    }
+
+    const { text, voiceId = '21m00Tcm4TlvDq8ikWAM', model_id = 'eleven_turbo_v2' } = req.body || {};
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'missing_text' });
+    }
+
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 
+        accept: 'audio/mpeg', 
+        'content-type': 'application/json', 
+        'xi-api-key': API_KEY 
+      },
+      body: JSON.stringify({ text, model_id })
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      return res.status(response.status).send(body || 'tts_error');
+    }
+
+    res.setHeader('content-type', 'audio/mpeg');
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('ElevenLabs TTS error:', error);
+    res.status(500).json({ error: 'proxy_error', message: error.message });
+  }
+});
+
+// ElevenLabs health check endpoint
+app.get('/api/elevenlabs/health', async (req, res) => {
+  try {
+    const API_KEY = process.env.ELEVENLABS_API_KEY || process.env.VITE_ELEVENLABS_API_KEY;
+    if (!API_KEY) {
+      return res.status(200).json({ ok: false, message: 'missing_api_key' });
+    }
+
+    const response = await fetch('https://api.elevenlabs.io/v1/user', {
+      headers: { 'xi-api-key': API_KEY }
+    });
+
+    if (!response.ok) {
+      const msg = await response.text();
+      return res.status(200).json({ ok: false, status: response.status, message: msg || 'invalid_key_or_plan' });
+    }
+
+    const info = await response.json().catch(() => ({}));
+    res.json({ ok: true, info });
+  } catch (error) {
+    console.error('ElevenLabs health check error:', error);
+    res.status(200).json({ ok: false, message: 'proxy_offline_or_network' });
+  }
 });
 
 // Human audio upload endpoint
@@ -751,6 +846,93 @@ app.post('/api/debate/:id/sweep', async (req, res) => {
   }
 });
 
+// N8N Webhook Integration for Content Creation
+app.post('/api/create-content', async (req, res) => {
+  try {
+    const { title, age_group, proficiency } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    console.log('🚀 N8N Webhook: Creating content for:', { title, age_group, proficiency });
+
+    // Get Lindy.ai agent webhook URL from environment variables
+    console.log('🔍 Environment check - LINDY_AI_WEBHOOK_URL:', process.env.LINDY_AI_WEBHOOK_URL);
+    const lindyWebhookUrl = process.env.LINDY_AI_WEBHOOK_URL || process.env.N8N_WEBHOOK_URL || 'https://your-lindy-agent.com/webhook';
+    
+    // Prepare payload for Lindy.ai agent
+    const lindyPayload = {
+      summary: title,
+      age: age_group === 'primary' ? 9 : age_group === 'secondary' ? 12 : 16,
+      proficiency: proficiency || 'intermediate',
+      timestamp: new Date().toISOString(),
+      source: 'vocabpro-api',
+      request_type: 'content_generation',
+      metadata: {
+        age_group: age_group || 'general',
+        topic: title,
+        learning_objectives: ['vocabulary', 'comprehension', 'interactive_activities']
+      }
+    };
+
+    console.log('📤 Sending to Lindy.ai agent:', lindyWebhookUrl);
+    console.log('📦 Payload:', lindyPayload);
+
+    // Send request to Lindy.ai agent
+    const response = await axios.post(lindyWebhookUrl, lindyPayload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'VocabPro-API/1.0'
+      },
+      timeout: 30000 // 30 second timeout
+    });
+
+    console.log('✅ N8N webhook response received:', response.status);
+    
+    // Return the structured content from n8n
+    const structuredContent = response.data;
+    
+    // Optionally save to Supabase here if not done in n8n
+    // This would be a good place to add database persistence
+    
+    res.json({
+      success: true,
+      message: 'Content created successfully via N8N automation',
+      data: structuredContent,
+      source: 'n8n-webhook'
+    });
+
+  } catch (error) {
+    console.error('❌ N8N webhook error:', error);
+    
+    // Provide fallback response if n8n is not available
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.log('⚠️ N8N not available, providing fallback response');
+      return res.json({
+        success: false,
+        message: 'N8N automation service not available',
+        fallback: true,
+        data: {
+          title: req.body.title,
+          content: `This is a fallback response for "${req.body.title}". The N8N automation service is currently unavailable. Please try again later or contact support.`,
+          sections: {
+            introduction: `Introduction to ${req.body.title}`,
+            main_content: `Main content about ${req.body.title}`,
+            conclusion: `Conclusion about ${req.body.title}`
+          }
+        }
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Content creation failed', 
+      details: error.message,
+      fallback: false
+    });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
@@ -758,6 +940,155 @@ app.use((error, req, res, next) => {
     error: 'Internal server error', 
     details: error.message 
   });
+});
+
+// API Proxy endpoints to avoid CORS issues
+app.post('/api/proxy/serpapi', async (req, res) => {
+  try {
+    const { q, location, num, gl, hl } = req.body;
+    
+    if (!q) {
+      return res.status(400).json({ error: 'Query parameter "q" is required' });
+    }
+
+    const apiKey = process.env.VITE_SERPAPI_KEY || process.env.SERPAPI_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'SerpAPI key not configured' });
+    }
+
+    const query = new URLSearchParams({
+      engine: 'google',
+      api_key: apiKey,
+      q: q,
+      ...(location ? { location } : {}),
+      ...(gl ? { gl } : {}),
+      ...(hl ? { hl } : {}),
+      ...(num ? { num: String(num) } : {}),
+    });
+
+    const url = `https://serpapi.com/search.json?${query.toString()}`;
+    console.log('🔍 SerpAPI proxy request:', url.replace(apiKey, '***HIDDEN***'));
+
+    const response = await axios.get(url);
+    const data = response.data;
+    
+    const organic = data.organic_results || [];
+    const results = organic.map((r, idx) => ({
+      position: r.position ?? idx + 1,
+      title: r.title,
+      link: r.link,
+      snippet: r.snippet,
+      source: r.source,
+    }));
+
+    res.json({ results, total: organic.length });
+  } catch (error) {
+    console.error('SerpAPI proxy error:', error.message);
+    res.status(500).json({ error: 'SerpAPI request failed', details: error.message });
+  }
+});
+
+app.post('/api/proxy/firecrawl', async (req, res) => {
+  try {
+    const { q, limit } = req.body;
+    
+    if (!q) {
+      return res.status(400).json({ error: 'Query parameter "q" is required' });
+    }
+
+    const apiKey = process.env.VITE_FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Firecrawl API key not configured' });
+    }
+
+    const url = 'https://api.firecrawl.dev/v1/search';
+    console.log('🔍 Firecrawl proxy request for:', q);
+
+    const response = await axios.post(url, {
+      query: q,
+      limit: limit || 5
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      }
+    });
+
+    const data = response.data;
+    const results = data.results || data.data || [];
+    
+    res.json({ results, total: results.length });
+  } catch (error) {
+    console.error('Firecrawl proxy error:', error.message);
+    res.status(500).json({ error: 'Firecrawl request failed', details: error.message });
+  }
+});
+
+app.post('/api/proxy/firecrawl/scrape', async (req, res) => {
+  try {
+    const { url, formats } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL parameter is required' });
+    }
+
+    const apiKey = process.env.VITE_FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Firecrawl API key not configured' });
+    }
+
+    const scrapeUrl = 'https://api.firecrawl.dev/v1/scrape';
+    console.log('🔍 Firecrawl scrape request for:', url);
+
+    const response = await axios.post(scrapeUrl, {
+      url: url,
+      formats: formats || ['markdown', 'html']
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      }
+    });
+
+    const data = response.data;
+    
+    res.json({
+      markdown: data.markdown,
+      html: data.html,
+      raw: data.raw,
+      links: data.links,
+      meta: data.meta
+    });
+  } catch (error) {
+    console.error('Firecrawl scrape error:', error.message);
+    res.status(500).json({ error: 'Firecrawl scrape failed', details: error.message });
+  }
+});
+
+app.post('/api/proxy/wikipedia', async (req, res) => {
+  try {
+    const { title } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: 'Title parameter is required' });
+    }
+
+    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+    console.log('🔍 Wikipedia proxy request for:', title);
+
+    const response = await axios.get(url);
+    const data = response.data;
+    
+    res.json({
+      title: data.title,
+      extract: data.extract,
+      content_urls: data.content_urls,
+      thumbnail: data.thumbnail
+    });
+  } catch (error) {
+    console.error('Wikipedia proxy error:', error.message);
+    res.status(500).json({ error: 'Wikipedia request failed', details: error.message });
+  }
 });
 
 // 404 handler
@@ -775,6 +1106,8 @@ app.listen(port, () => {
   console.log('  POST /api/generate-debate-arguments - Debate argument generation');
   console.log('  POST /api/tts - Text-to-speech');
   console.log('  GET /api/voices - Get available voices');
+  console.log('  🚀 N8N INTEGRATION:');
+  console.log('  POST /api/create-content - Create content via N8N webhook');
   console.log('  🎯 TURN ENGINE ENDPOINTS:');
   console.log('  POST /api/debate/initialize - Initialize debate');
   console.log('  GET /api/debate/:id/state - Get debate state');

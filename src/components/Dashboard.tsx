@@ -12,6 +12,15 @@ interface DashboardProps {
 function Dashboard({ onLogout, libraryItems }: DashboardProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  
+  // Debug: Log user data to see what's available
+  useEffect(() => {
+    if (user) {
+      console.log('👤 User data:', user);
+      console.log('👤 User metadata:', user.user_metadata);
+      console.log('👤 User email:', user.email);
+    }
+  }, [user]);
   type RecentWord = { id: number; word: string; createdAt: string };
   type RecentRecording = { id: number; word: string; url: string; createdAt: string };
   const [recentWords, setRecentWords] = useState<RecentWord[]>([]);
@@ -112,7 +121,7 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
         {/* Welcome Section */}
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Welcome Back, {user?.user_metadata?.full_name?.split(' ')[0] || 'User'}!
+            Welcome Back, {user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0]?.charAt(0).toUpperCase() + user?.email?.split('@')[0]?.slice(1) || 'User'}!
           </h1>
           <p className="text-xl text-gray-300">
             Ready to continue your learning journey?
@@ -163,6 +172,21 @@ function Dashboard({ onLogout, libraryItems }: DashboardProps) {
               onClick={() => navigate('/debates')}
             >
               Practice Debate
+            </button>
+          </div>
+
+          {/* Flashcards */}
+          <div className="bg-white/10 backdrop-blur-lg p-6 rounded-2xl border border-white/20 hover:border-green-400/50 transition-all duration-300 transform hover:-translate-y-2">
+            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl flex items-center justify-center mb-4">
+              <BookOpen className="w-6 h-6 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Flashcards</h3>
+            <p className="text-gray-300 mb-4">Review your vocabulary words</p>
+            <button 
+              className="w-full bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white py-2 rounded-lg font-semibold transition-all duration-300"
+              onClick={() => navigate('/flashcards')}
+            >
+              Practice Flashcards
             </button>
           </div>
 

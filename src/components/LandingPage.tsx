@@ -185,19 +185,19 @@ const LandingPage = () => {
           <div className="grid md:grid-cols-3 gap-8">
             <div className="bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
               <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="Sarah" className="w-20 h-20 rounded-full mb-4 border-4 border-blue-200" />
-              <p className="text-gray-700 text-center mb-4">“My students' vocabulary retention improved dramatically. The visual associations make learning so much more engaging!”</p>
+              <p className="text-gray-700 text-center mb-4">"My students' vocabulary retention improved dramatically. The visual associations make learning so much more engaging!"</p>
               <span className="font-bold text-purple-700">Sarah Chen</span>
               <span className="text-sm text-gray-500">ESL Teacher</span>
             </div>
             <div className="bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
               <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Michael" className="w-20 h-20 rounded-full mb-4 border-4 border-purple-200" />
-              <p className="text-gray-700 text-center mb-4">“I've tried many vocabulary apps, but this one is different. The images help me remember words I used to forget immediately.”</p>
+              <p className="text-gray-700 text-center mb-4">"I've tried many vocabulary apps, but this one is different. The images help me remember words I used to forget immediately."</p>
               <span className="font-bold text-purple-700">Michael Rodriguez</span>
               <span className="text-sm text-gray-500">Language Student</span>
             </div>
             <div className="bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
               <img src="https://randomuser.me/api/portraits/women/68.jpg" alt="Emily" className="w-20 h-20 rounded-full mb-4 border-4 border-indigo-200" />
-              <p className="text-gray-700 text-center mb-4">“The AI's ability to create contextually relevant images is impressive. It's revolutionizing how we approach vocabulary teaching.”</p>
+              <p className="text-gray-700 text-center mb-4">"The AI's ability to create contextually relevant images is impressive. It's revolutionizing how we approach vocabulary teaching."</p>
               <span className="font-bold text-purple-700">Dr. Emily Watson</span>
               <span className="text-sm text-gray-500">Linguistics Professor</span>
             </div>

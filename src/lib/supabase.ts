@@ -495,10 +495,15 @@ export const signIn = async (email: string, password: string) => {
   return { data, error };
 };
 
-export const signUp = async (email: string, password: string) => {
+export const signUp = async (email: string, password: string, name?: string) => {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: {
+        name: name || '',
+      }
+    }
   });
   return { data, error };
 };
