@@ -30,9 +30,6 @@ import MediaRecorderTest from './components/MediaRecorderTest';
 import PeerTest from './components/PeerTest';
 import ChartsDemo from './components/ChartsDemo';
 import LiveDebatesStreamlit from './components/LiveDebatesStreamlit';
-import TTSTest from './components/TTSTest';
-import RecordingTest from './components/RecordingTest';
-import DebateDemo from './components/DebateDemo';
 
 export interface LibraryItem {
   name: string;
@@ -198,9 +195,6 @@ function App() {
               <Route path="/mediarecorder-test" element={<MediaRecorderTest />} />
               <Route path="/peer-test" element={<PeerTest />} />
               <Route path="/charts-demo" element={<ChartsDemo />} />
-              <Route path="/tts-test" element={<TTSTest />} />
-              <Route path="/recording-test" element={<RecordingTest />} />
-              <Route path="/debate-demo" element={<DebateDemo />} />
               <Route path="/*" element={<LandingPage />} />
             </Routes>
           </BrowserRouter>
